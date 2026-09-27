@@ -4,6 +4,7 @@ import { Container, Key, SelectList, Text, type SelectItem } from "@earendil-wor
 const MAIN_ITEMS: SelectItem[] = [
   { value: "route", label: "Route", description: "Recommend next workflow (/skill:route)" },
   { value: "grill", label: "Grill", description: "Stress-test a plan or design (/skill:grilling)" },
+  { value: "maintain", label: "Maintain", description: "Audit upstream updates & reconcile overrides (/skill:maintain)" },
   { value: "verify", label: "Verify", description: "Run product verification (/verify)" },
   { value: "ui-check", label: "UI check", description: "Exercise browser flow (/ui-check)" },
   { value: "release-check", label: "Release check", description: "Check release readiness (/release-check)" },
@@ -151,6 +152,12 @@ async function showPalette(pi: ExtensionAPI, ctx: ExtensionContext): Promise<voi
       ctx.ui.setEditorText("");
     }
     pi.sendUserMessage(`/skill:grilling ${task}`, { expandPromptTemplates: true });
+    return;
+  }
+
+  // 4c. Maintain (audit upstream updates & reconcile overrides)
+  if (selected === "maintain") {
+    pi.sendUserMessage("/skill:maintain", { expandPromptTemplates: true });
     return;
   }
 

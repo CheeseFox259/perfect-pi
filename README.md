@@ -20,6 +20,17 @@ Package install can be skipped for isolated configuration tests with `--skip-pac
 - Matt's explicit workflow skills own grilling, implementation, tickets, wayfinding, code review, and handoff.
 - `/verify`, `/ui-check`, and `/release-check` are short repeatable evidence workflows.
 - Use `/skill:code-review` and `/skill:handoff` as the canonical review and handoff entries.
+- `/skill:maintain` audits upstream repository updates, diffs overrides, and executes 3-way merges.
+
+## Maintenance & Upstream Lineage
+
+`components.json` tracks upstream pin baselines, custom skills, and local overrides. `reconcile.mjs` audits upstream git references and ensures local enhancements (such as interactive TUI questionnaire dispatch in `grilling`) are preserved during upstream upgrades.
+
+```bash
+node reconcile.mjs status       # Check remote upstream updates and override health
+node reconcile.mjs diff grilling # Inspect delta between upstream base and local enhancement
+node reconcile.mjs 3way-test grilling # Verify 3-way merge mechanism
+```
 
 ## Context and runtime measurements
 
@@ -46,9 +57,5 @@ node route-smoke.mjs /tmp/route-results.json
 - Tier 2: user-facing or high-risk behavior, app runtime, browser critical path, and console/network evidence when available.
 
 For product-level completion, use `verify-product`. Results must distinguish verified, not run, blocked, and not applicable.
-
-## Roadmap & Backlog
-
-- **Upstream Component Version Migration**: Build an automated helper workflow/script to audit upstream Matt Pocock skill diffs against local overrides (such as `skills/grilling`) and streamline semver/ref upgrades without regressing local TUI enhancements.
 
 User-specific credentials, sessions, models, and unrelated settings stay local. Do not install duplicate plan, todo, memory, context-pruning, or subagent systems.

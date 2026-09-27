@@ -1,0 +1,86 @@
+{
+  "$schema": "./components.schema.json",
+  "version": "1.0.0",
+  "description": "Registry of local overrides, custom skills, and managed extensions in Perfect Pi",
+  "upstreams": {
+    "mattpocock/skills": {
+      "repo": "https://github.com/mattpocock/skills.git",
+      "pinnedRef": "c55ee46073ed923f86ce59a5eb3b6d895095d1b7",
+      "description": "Matt Pocock engineering methodology kernel (design tree, tdd, code review, etc.)"
+    },
+    "anthropics/skills": {
+      "repo": "https://github.com/anthropics/skills.git",
+      "pinnedRef": "33375500bcea98d610eb30ce10ac4e59b89c390d",
+      "description": "Anthropic official reference skills (frontend design, etc.)"
+    },
+    "vercel-labs/agent-skills": {
+      "repo": "https://github.com/vercel-labs/agent-skills.git",
+      "pinnedRef": "063bee94c3f4df8453406c830b0a7df0f2860278",
+      "description": "Vercel web interface guidelines and React performance skills"
+    }
+  },
+  "skills": {
+    "grilling": {
+      "type": "override",
+      "upstream": "mattpocock/skills",
+      "upstreamRepo": "https://github.com/mattpocock/skills.git",
+      "baseRef": "c55ee46073ed923f86ce59a5eb3b6d895095d1b7",
+      "localPath": "skills/grilling/SKILL.md",
+      "upstreamRelPath": "skills/grilling/SKILL.md",
+      "description": "Enhanced Matt Pocock grilling with interactive TUI questionnaire dispatch and 'e' amend key",
+      "preservedFeatures": [
+        "Interactive TUI questionnaire dispatch",
+        "Key hint 'e' to amend/supplement",
+        "Recommended answer labeling",
+        "Non-interactive fallback"
+      ]
+    },
+    "route": {
+      "type": "custom",
+      "localPath": "skills/route/SKILL.md",
+      "description": "Deterministic workflow router directing tasks to Matt Pocock or verification skills"
+    },
+    "verify-product": {
+      "type": "custom",
+      "localPath": "skills/verify-product/SKILL.md",
+      "description": "3-tier evidence verification methodology (Tier 0 direct, Tier 1 engineering, Tier 2 browser/runtime)"
+    },
+    "project-architecture": {
+      "type": "custom",
+      "localPath": "skills/project-architecture/SKILL.md",
+      "description": "Architecture constraints, domain boundary, and ADR compliance enforcement"
+    },
+    "maintain": {
+      "type": "custom",
+      "localPath": "skills/maintain/SKILL.md",
+      "description": "Maintenance assistant to audit upstream updates, diff overrides, and reconcile 3-way merges"
+    }
+  },
+  "extensions": {
+    "question": {
+      "type": "custom",
+      "localPath": "global/extensions/question.ts",
+      "description": "Single-question TUI selector with inline editor and 'e' amend support"
+    },
+    "questionnaire": {
+      "type": "custom",
+      "localPath": "global/extensions/questionnaire.ts",
+      "description": "Multi-question tabbed TUI selector with batch submission and 'e' amend support"
+    },
+    "command-palette": {
+      "type": "custom",
+      "localPath": "global/extensions/command-palette.ts",
+      "description": "Ctrl+Shift+P quick launcher for native model picker, route, grill, verify, and maintain"
+    },
+    "tools": {
+      "type": "custom",
+      "localPath": "global/extensions/tools.ts",
+      "description": "Interactive tool toggle manager"
+    },
+    "structured-output": {
+      "type": "custom",
+      "localPath": "global/extensions/structured-output.ts",
+      "description": "Structured JSON output terminator"
+    }
+  }
+}

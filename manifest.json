@@ -49,6 +49,7 @@
     {"source": "local:route", "scope": "local"},
     {"source": "local:verify-product", "scope": "local"},
     {"source": "local:project-architecture", "scope": "local"},
-    {"source": "local:grilling", "scope": "local"}
+    {"source": "local:grilling", "scope": "local"},
+    {"source": "local:maintain", "scope": "local"}
   ]
 }
