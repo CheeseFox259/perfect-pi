@@ -48,6 +48,7 @@
     {"source": "vercel-labs/agent-skills", "ref": "063bee94c3f4df8453406c830b0a7df0f2860278", "selection": ["vercel-react-best-practices", "web-design-guidelines"], "scope": "global"},
     {"source": "local:route", "scope": "local"},
     {"source": "local:verify-product", "scope": "local"},
-    {"source": "local:project-architecture", "scope": "local"}
+    {"source": "local:project-architecture", "scope": "local"},
+    {"source": "local:grilling", "scope": "local"}
   ]
 }

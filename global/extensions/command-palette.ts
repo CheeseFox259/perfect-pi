@@ -3,6 +3,7 @@ import { Container, Key, SelectList, Text, type SelectItem } from "@earendil-wor
 
 const MAIN_ITEMS: SelectItem[] = [
   { value: "route", label: "Route", description: "Recommend next workflow (/skill:route)" },
+  { value: "grill", label: "Grill", description: "Stress-test a plan or design (/skill:grilling)" },
   { value: "verify", label: "Verify", description: "Run product verification (/verify)" },
   { value: "ui-check", label: "UI check", description: "Exercise browser flow (/ui-check)" },
   { value: "release-check", label: "Release check", description: "Check release readiness (/release-check)" },
@@ -136,6 +137,20 @@ async function showPalette(pi: ExtensionAPI, ctx: ExtensionContext): Promise<voi
       ctx.ui.setEditorText("");
     }
     pi.sendUserMessage(`/skill:route ${task}`, { expandPromptTemplates: true });
+    return;
+  }
+
+  // 4b. Grill (stress-test a plan/design with interactive questionnaire)
+  if (selected === "grill") {
+    let task = ctx.ui.getEditorText?.()?.trim() || "";
+    if (!task) {
+      const input = await ctx.ui.input("Grill plan / design", "Enter the plan, design, or feature to stress-test...");
+      if (!input?.trim()) return;
+      task = input.trim();
+    } else {
+      ctx.ui.setEditorText("");
+    }
+    pi.sendUserMessage(`/skill:grilling ${task}`, { expandPromptTemplates: true });
     return;
   }
 

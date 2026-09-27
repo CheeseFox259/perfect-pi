@@ -47,4 +47,8 @@ node route-smoke.mjs /tmp/route-results.json
 
 For product-level completion, use `verify-product`. Results must distinguish verified, not run, blocked, and not applicable.
 
+## Roadmap & Backlog
+
+- **Upstream Component Version Migration**: Build an automated helper workflow/script to audit upstream Matt Pocock skill diffs against local overrides (such as `skills/grilling`) and streamline semver/ref upgrades without regressing local TUI enhancements.
+
 User-specific credentials, sessions, models, and unrelated settings stay local. Do not install duplicate plan, todo, memory, context-pruning, or subagent systems.

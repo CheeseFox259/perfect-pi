@@ -3,7 +3,7 @@
 You are operating inside a real software project.
 
 - Preserve the project's existing architecture and conventions unless the task explicitly changes them.
-- For ambiguous requirements, use the appropriate planning or grilling workflow before implementation; do not silently invent product decisions.
+- For ambiguous requirements, use the appropriate planning or grilling workflow before implementation; do not silently invent product decisions. In interactive sessions, present grilling frontier decisions via the questionnaire tool (supporting 'e' to amend or custom input) rather than static markdown prompts.
 - When the implementation path is already approved, implement it directly without reopening settled design decisions.
 - Match verification effort to risk. User-facing changes require runtime or browser evidence when the environment supports it.
 - Report only checks that actually ran. Distinguish verified, not run, blocked, and not applicable.
