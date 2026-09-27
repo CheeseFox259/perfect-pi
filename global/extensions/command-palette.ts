@@ -1,13 +1,15 @@
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Container, DynamicBorder, Key, SelectList, Text, type SelectItem } from "@earendil-works/pi-tui";
+import { DynamicBorder, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { Container, Key, SelectList, Text, type SelectItem } from "@earendil-works/pi-tui";
 
 const ITEMS: SelectItem[] = [
-  { value: "verify", label: "Verify", description: "Run product verification" },
-  { value: "ui-check", label: "UI check", description: "Exercise the affected browser flow" },
-  { value: "release-check", label: "Release check", description: "Check release readiness" },
-  { value: "context", label: "Context", description: "Inspect current context" },
-  { value: "model", label: "Model", description: "Open the model selector" },
-  { value: "settings", label: "Settings", description: "Open Pi settings" },
+  { value: "route", label: "Route", description: "Recommend next workflow (/skill:route)" },
+  { value: "verify", label: "Verify", description: "Run product verification (/verify)" },
+  { value: "ui-check", label: "UI check", description: "Exercise browser flow (/ui-check)" },
+  { value: "release-check", label: "Release check", description: "Check release readiness (/release-check)" },
+  { value: "code-review", label: "Code review", description: "Two-axis code review (/skill:code-review)" },
+  { value: "context", label: "Context", description: "Inspect current context (/context)" },
+  { value: "model", label: "Model", description: "Open the model selector (/model)" },
+  { value: "settings", label: "Settings", description: "Open Pi settings (/settings)" },
 ];
 
 async function showPalette(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {
@@ -43,6 +45,14 @@ async function showPalette(pi: ExtensionAPI, ctx: ExtensionContext): Promise<voi
   }
   if (selected === "settings") {
     pi.sendUserMessage("/settings", { expandPromptTemplates: true });
+    return;
+  }
+  if (selected === "route") {
+    pi.sendUserMessage("/skill:route", { expandPromptTemplates: true });
+    return;
+  }
+  if (selected === "code-review") {
+    pi.sendUserMessage("/skill:code-review", { expandPromptTemplates: true });
     return;
   }
   pi.sendUserMessage(`/${selected}`, { expandPromptTemplates: true });
