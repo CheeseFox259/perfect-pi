@@ -179,7 +179,7 @@ export default function questionnaire(pi: ExtensionAPI) {
 				editor.onSubmit = (value) => {
 					if (!inputQuestionId) return;
 					const trimmed = value.trim() || "(no response)";
-					saveAnswer(inputQuestionId, trimmed, trimmed, true);
+					saveAnswer(inputQuestionId, trimmed, trimmed, true, optionIndex + 1);
 					inputMode = false;
 					inputQuestionId = null;
 					editor.setText("");
@@ -240,6 +240,22 @@ export default function questionnaire(pi: ExtensionAPI) {
 						optionIndex = Math.min(opts.length - 1, optionIndex + 1);
 						refresh();
 						return;
+					}
+
+					// Edit / Amend current option with 'e'
+					if ((data === "e" || data === "E") && q) {
+						const opt = opts[optionIndex];
+						if (opt) {
+							inputMode = true;
+							inputQuestionId = q.id;
+							if (opt.isOther) {
+								editor.setText("");
+							} else {
+								editor.setText(opt.label + " ");
+							}
+							refresh();
+							return;
+						}
 					}
 
 					// Select option
@@ -321,7 +337,7 @@ export default function questionnaire(pi: ExtensionAPI) {
 							const selected = i === optionIndex;
 							const isOther = opt.isOther === true;
 							const prefix = selected ? theme.fg("accent", "> ") : "  ";
-							const label = `${i + 1}. ${opt.label}${isOther && inputMode ? " ✎" : ""}`;
+							const label = `${i + 1}. ${opt.label}${selected && inputMode ? " ✎" : ""}`;
 							const color = selected || (isOther && inputMode) ? "accent" : "text";
 
 							addWrappedWithPrefix(prefix, theme.fg(color, label));
@@ -338,19 +354,21 @@ export default function questionnaire(pi: ExtensionAPI) {
 						// Show options for reference
 						renderOptions();
 						lines.push("");
-						addWrappedWithPrefix(" ", theme.fg("muted", "Your answer:"));
+						const selected = opts[optionIndex];
+						const promptText = selected?.isOther ? "Your answer:" : `Amend/supplement (${selected?.label}):`;
+						addWrappedWithPrefix(" ", theme.fg("muted", promptText));
 						for (const line of editor.render(Math.max(1, renderWidth - 2))) {
 							lines.push(` ${line}`);
 						}
 						lines.push("");
-						addWrappedWithPrefix(" ", theme.fg("dim", "Enter to submit • Esc to cancel"));
+						addWrappedWithPrefix(" ", theme.fg("dim", "Enter to submit • Esc to go back"));
 					} else if (currentTab === questions.length) {
 						addWrappedWithPrefix(" ", theme.fg("accent", theme.bold("Ready to submit")));
 						lines.push("");
 						for (const question of questions) {
 							const answer = answers.get(question.id);
 							if (answer) {
-								const prefix = answer.wasCustom ? "(wrote) " : "";
+								const prefix = answer.wasCustom ? "(amended) " : "";
 								const summary = `${theme.fg("muted", `${question.label}: `)}${theme.fg("text", prefix + answer.label)}`;
 								addWrappedWithPrefix(" ", summary);
 							}
@@ -374,8 +392,8 @@ export default function questionnaire(pi: ExtensionAPI) {
 					lines.push("");
 					if (!inputMode) {
 						const help = isMulti
-							? "Tab/←→ navigate • ↑↓ select • Enter confirm • Esc cancel"
-							: "↑↓ navigate • Enter select • Esc cancel";
+							? "Tab/←→ tabs • ↑↓ navigate • Enter select • 'e' amend • Esc cancel"
+							: "↑↓ navigate • Enter select • 'e' amend • Esc cancel";
 						addWrappedWithPrefix(" ", theme.fg("dim", help));
 					}
 					lines.push(theme.fg("accent", "─".repeat(renderWidth)));
@@ -403,7 +421,7 @@ export default function questionnaire(pi: ExtensionAPI) {
 			const answerLines = result.answers.map((a) => {
 				const qLabel = questions.find((q) => q.id === a.id)?.label || a.id;
 				if (a.wasCustom) {
-					return `${qLabel}: user wrote: ${a.label}`;
+					return `${qLabel}: user amended/wrote: ${a.label}`;
 				}
 				return `${qLabel}: user selected: ${a.index}. ${a.label}`;
 			});

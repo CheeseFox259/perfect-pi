@@ -128,10 +128,24 @@ export default function question(pi: ExtensionAPI) {
 							return;
 						}
 
+						// Press 'e' or 'E' on any option to edit / amend
+						if (data === "e" || data === "E") {
+							const selected = allOptions[optionIndex];
+							editMode = true;
+							if (selected.isOther) {
+								editor.setText("");
+							} else {
+								editor.setText(selected.label + " ");
+							}
+							refresh();
+							return;
+						}
+
 						if (matchesKey(data, Key.enter)) {
 							const selected = allOptions[optionIndex];
 							if (selected.isOther) {
 								editMode = true;
+								editor.setText("");
 								refresh();
 							} else {
 								done({ answer: selected.label, wasCustom: false, index: optionIndex + 1 });
@@ -176,7 +190,7 @@ export default function question(pi: ExtensionAPI) {
 							const selected = i === optionIndex;
 							const isOther = opt.isOther === true;
 							const prefix = selected ? theme.fg("accent", "> ") : "  ";
-							const label = `${i + 1}. ${opt.label}${isOther && editMode ? " ✎" : ""}`;
+							const label = `${i + 1}. ${opt.label}${selected && editMode ? " ✎" : ""}`;
 							const color = selected || (isOther && editMode) ? "accent" : "text";
 
 							addWrappedWithPrefix(prefix, theme.fg(color, label));
@@ -189,7 +203,9 @@ export default function question(pi: ExtensionAPI) {
 
 						if (editMode) {
 							lines.push("");
-							addWrappedWithPrefix(" ", theme.fg("muted", "Your answer:"));
+							const selected = allOptions[optionIndex];
+							const promptText = selected?.isOther ? "Your answer:" : `Amend/supplement (${selected?.label}):`;
+							addWrappedWithPrefix(" ", theme.fg("muted", promptText));
 							for (const line of editor.render(Math.max(1, renderWidth - 2))) {
 								lines.push(` ${line}`);
 							}
@@ -199,7 +215,7 @@ export default function question(pi: ExtensionAPI) {
 						if (editMode) {
 							addWrappedWithPrefix(" ", theme.fg("dim", "Enter to submit • Esc to go back"));
 						} else {
-							addWrappedWithPrefix(" ", theme.fg("dim", "↑↓ navigate • Enter to select • Esc to cancel"));
+							addWrappedWithPrefix(" ", theme.fg("dim", "↑↓ navigate • Enter select • 'e' amend/edit • Esc cancel"));
 						}
 						lines.push(theme.fg("accent", "─".repeat(renderWidth)));
 
@@ -273,7 +289,7 @@ export default function question(pi: ExtensionAPI) {
 
 			if (details.wasCustom) {
 				return new Text(
-					theme.fg("success", "✓ ") + theme.fg("muted", "(wrote) ") + theme.fg("accent", details.answer),
+					theme.fg("success", "✓ ") + theme.fg("muted", "(amended) ") + theme.fg("accent", details.answer),
 					0,
 					0,
 				);
