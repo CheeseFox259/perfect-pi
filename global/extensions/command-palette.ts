@@ -4,10 +4,8 @@ import { Container, DynamicBorder, Key, SelectList, Text, type SelectItem } from
 const ITEMS: SelectItem[] = [
   { value: "verify", label: "Verify", description: "Run product verification" },
   { value: "ui-check", label: "UI check", description: "Exercise the affected browser flow" },
-  { value: "review", label: "Review", description: "Review the current diff" },
   { value: "release-check", label: "Release check", description: "Check release readiness" },
   { value: "context", label: "Context", description: "Inspect current context" },
-  { value: "files", label: "Files", description: "Browse referenced and changed files" },
   { value: "model", label: "Model", description: "Open the model selector" },
   { value: "settings", label: "Settings", description: "Open Pi settings" },
 ];
@@ -40,14 +38,14 @@ async function showPalette(pi: ExtensionAPI, ctx: ExtensionContext): Promise<voi
 
   if (!selected) return;
   if (selected === "model") {
-    await pi.sendUserMessage("Open the model selector so I can choose the active model.");
+    pi.sendUserMessage("/model", { expandPromptTemplates: true });
     return;
   }
   if (selected === "settings") {
-    await pi.sendUserMessage("Open Pi settings.");
+    pi.sendUserMessage("/settings", { expandPromptTemplates: true });
     return;
   }
-  await pi.sendUserMessage(`Run the /${selected} workflow now.`);
+  pi.sendUserMessage(`/${selected}`, { expandPromptTemplates: true });
 }
 
 export default function (pi: ExtensionAPI): void {

@@ -9,4 +9,5 @@ You are operating inside a real software project.
 - Report only checks that actually ran. Distinguish verified, not run, blocked, and not applicable.
 - Never expose or modify credentials, secrets, generated files, or unrelated user changes without a clear request.
 - Destructive, irreversible, production, or external-system writes require explicit confirmation.
-- Prefer small, composable changes and leave a clear handoff when work is incomplete.
+- Batch same-file changes into a single `edit` call. Never construct `oldText` from memory across turns; `read` the target lines if the file was modified earlier in the session.
+- On edit mismatch, do not blind-guess or repeat old text. Read the target range immediately to obtain fresh ground truth before retrying.

@@ -1,29 +1,23 @@
 ---
 name: verify-product
-description: Verify that a product change works through project checks and real user-facing paths. Use after implementation, bug fixes, releases, or UI changes.
+description: Verify a product change through risk-appropriate project checks and real user-facing paths. Use after implementation, bug fixes, UI changes, or release preparation.
 ---
 
 # Verify Product
 
-Verify behavior in layers. Read project `AGENTS.md`, `.pi` resources, package scripts, and any project verification guide before choosing commands.
+Choose the lightest tier that proves the changed behavior, then report evidence honestly.
 
-## Evidence ladder
+- Tier 0: direct query or bounded local change. Inspect, make the minimal change, and run a cheap relevant check.
+- Tier 1: normal bug or feature. Use `implement` or `diagnosing-bugs`, then run relevant LSP, tests, typecheck, build, or review checks.
+- Tier 2: UI, auth, payments, critical flow, major refactor, or release candidate. Run Tier 1, start the real app, exercise the affected browser path, and inspect console/network evidence when available.
 
-1. Static: lint, typecheck, formatting, static analysis.
-2. Automated: unit, integration, and end-to-end tests.
-3. Artifact: build, migrations, generated clients, package validation.
-4. Runtime: start the real application and confirm health.
-5. Browser: exercise affected critical paths with the browser capability when available.
-6. Diagnostics: inspect server logs, browser console, and failed network requests.
-7. Visual: inspect screenshots and responsive interaction for user-facing changes.
+Use the project's existing scripts and verification rules. Use `process` for long-running servers. Use the browser for user-facing behavior when the environment supports it.
 
-## Rules
+Always report exactly these sections:
 
-- Match the evidence to the risk and changed surface.
-- Prefer the project's existing scripts and conventions.
-- Use a process manager for long-running servers when available.
-- Use browser verification for UI, routing, auth, persistence, and integration changes when the environment supports it.
-- Never claim a check ran when it did not.
-- Report four explicit sections: Verified, Not run, Blocked, Not applicable.
-- Include exact commands, test counts, URLs or flows, and relevant error summaries.
-- Do not rewrite tests or weaken checks just to obtain a green result.
+- **Verified**: checks actually run and their concrete results.
+- **Not run**: relevant checks intentionally not executed.
+- **Blocked**: checks that could not run and why.
+- **Not applicable**: checks unrelated to this change.
+
+Include commands, counts, URLs/flows, and error summaries. Never write `should work`, `probably fixed`, or `looks good` as evidence. Do not weaken or rewrite checks to obtain a green result.
