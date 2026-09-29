@@ -4,6 +4,9 @@ import { Container, Key, SelectList, Text, type SelectItem } from "@earendil-wor
 const MAIN_ITEMS: SelectItem[] = [
   { value: "route", label: "Route", description: "Recommend next workflow (/skill:route)" },
   { value: "grill", label: "Grill", description: "Stress-test a plan or design (/skill:grilling)" },
+  { value: "spec", label: "Spec", description: "Turn this conversation into a spec (/skill:to-spec)" },
+  { value: "tickets", label: "Tickets", description: "Break a spec into slices with blockers (/skill:to-tickets)" },
+  { value: "implement-spec", label: "Implement spec", description: "Work a ticket graph via subagents (/skill:implement-spec)" },
   { value: "maintain", label: "Maintain", description: "Audit upstream updates & reconcile overrides (/skill:maintain)" },
   { value: "verify", label: "Verify", description: "Run product verification (/verify)" },
   { value: "ui-check", label: "UI check", description: "Exercise browser flow (/ui-check)" },
@@ -22,6 +25,7 @@ async function selectOption<T extends string>(
   subtitle: string,
   items: SelectItem[],
 ): Promise<T | null> {
+  if (!ctx.ui?.custom) return null;
   return ctx.ui.custom<T | null>((tui, theme, _kb, done) => {
     const container = new Container();
     container.addChild(new DynamicBorder((line) => theme.fg("accent", line)));
@@ -50,7 +54,7 @@ async function selectOption<T extends string>(
 }
 
 async function showPalette(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {
-  if (!ctx.hasUI) return;
+  if (ctx.mode !== "tui" || !ctx.hasUI || !ctx.ui?.custom) return;
 
   const selected = await selectOption<string>(ctx, "Perfect Pi", "Choose an action", MAIN_ITEMS);
   if (!selected) return;
@@ -59,7 +63,7 @@ async function showPalette(pi: ExtensionAPI, ctx: ExtensionContext): Promise<voi
   if (selected === "model") {
     const available = ctx.modelRegistry?.getAvailable() ?? [];
     if (available.length === 0) {
-      ctx.ui.notify("No authenticated models found", "warning");
+      ctx.ui.notify?.("No authenticated models found", "warning");
       return;
     }
     const currentModelKey = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "";
@@ -78,9 +82,9 @@ async function showPalette(pi: ExtensionAPI, ctx: ExtensionContext): Promise<voi
     if (target) {
       const ok = await pi.setModel(target);
       if (ok) {
-        ctx.ui.notify(`Model switched to ${target.name || target.id}`, "info");
+        ctx.ui.notify?.(`Model switched to ${target.name || target.id}`, "info");
       } else {
-        ctx.ui.notify(`Failed to switch to ${chosen}: missing credentials`, "error");
+        ctx.ui.notify?.(`Failed to switch to ${chosen}: missing credentials`, "error");
       }
     }
     return;
@@ -98,7 +102,7 @@ async function showPalette(pi: ExtensionAPI, ctx: ExtensionContext): Promise<voi
     const chosenLevel = await selectOption<typeof levels[number]>(ctx, "Thinking Level", `Current: ${currentLevel}`, levelItems);
     if (!chosenLevel) return;
     pi.setThinkingLevel(chosenLevel);
-    ctx.ui.notify(`Thinking level set to ${chosenLevel}`, "info");
+    ctx.ui.notify?.(`Thinking level set to ${chosenLevel}`, "info");
     return;
   }
 
@@ -112,8 +116,8 @@ async function showPalette(pi: ExtensionAPI, ctx: ExtensionContext): Promise<voi
     const chosenSetting = await selectOption<string>(ctx, "Settings", "Choose configuration area", settingItems);
     if (!chosenSetting) return;
     if (chosenSetting === "pi-settings") {
-      ctx.ui.setEditorText("/settings");
-      ctx.ui.notify("Press Enter to open Pi Settings", "info");
+      ctx.ui.setEditorText?.("/settings");
+      ctx.ui.notify?.("Press Enter to open Pi Settings", "info");
       return;
     }
     if (chosenSetting === "ccstyle") {
@@ -131,11 +135,11 @@ async function showPalette(pi: ExtensionAPI, ctx: ExtensionContext): Promise<voi
   if (selected === "route") {
     let task = ctx.ui.getEditorText?.()?.trim() || "";
     if (!task) {
-      const input = await ctx.ui.input("Route Task", "Enter the task you want to route (e.g. Add OAuth, fix payment bug)...");
+      const input = await ctx.ui.input?.("Route Task", "Enter the task you want to route (e.g. Add OAuth, fix payment bug)...");
       if (!input?.trim()) return;
       task = input.trim();
     } else {
-      ctx.ui.setEditorText("");
+      ctx.ui.setEditorText?.("");
     }
     pi.sendUserMessage(`/skill:route ${task}`, { expandPromptTemplates: true });
     return;
@@ -145,17 +149,59 @@ async function showPalette(pi: ExtensionAPI, ctx: ExtensionContext): Promise<voi
   if (selected === "grill") {
     let task = ctx.ui.getEditorText?.()?.trim() || "";
     if (!task) {
-      const input = await ctx.ui.input("Grill plan / design", "Enter the plan, design, or feature to stress-test...");
+      const input = await ctx.ui.input?.("Grill plan / design", "Enter the plan, design, or feature to stress-test...");
       if (!input?.trim()) return;
       task = input.trim();
     } else {
-      ctx.ui.setEditorText("");
+      ctx.ui.setEditorText?.("");
     }
     pi.sendUserMessage(`/skill:grilling ${task}`, { expandPromptTemplates: true });
     return;
   }
 
-  // 4c. Maintain (audit upstream updates & reconcile overrides)
+  // 4c. Spec (capture this conversation, or pass a feature reference)
+  if (selected === "spec") {
+    let task = ctx.ui.getEditorText?.()?.trim() || "";
+    if (!task) {
+      const input = await ctx.ui.input?.("Feature to specify", "Optional feature reference; leave empty to use the conversation...");
+      if (input == null) return;
+      task = input.trim();
+    } else {
+      ctx.ui.setEditorText?.("");
+    }
+    pi.sendUserMessage(task ? `/skill:to-spec ${task}` : "/skill:to-spec", { expandPromptTemplates: true });
+    return;
+  }
+
+  // 4d. Tickets (break a spec or plan into vertical slices with blocking edges)
+  if (selected === "tickets") {
+    let ref = ctx.ui.getEditorText?.()?.trim() || "";
+    if (!ref) {
+      const input = await ctx.ui.input?.("Spec to break into tickets", "Enter a spec path, issue number, or leave empty to use the conversation...");
+      if (input == null) return;
+      ref = input.trim();
+    } else {
+      ctx.ui.setEditorText?.("");
+    }
+    pi.sendUserMessage(ref ? `/skill:to-tickets ${ref}` : "/skill:to-tickets", { expandPromptTemplates: true });
+    return;
+  }
+
+  // 4e. Implement spec (work the ticket graph frontier with subagents)
+  if (selected === "implement-spec") {
+    let ref = ctx.ui.getEditorText?.()?.trim() || "";
+    if (!ref) {
+      const input = await ctx.ui.input?.("Spec to implement", "Enter a spec path or issue number, or leave empty to use the conversation...");
+      if (input == null) return;
+      ref = input.trim();
+    } else {
+      ctx.ui.setEditorText?.("");
+    }
+    pi.sendUserMessage(ref ? `/skill:implement-spec ${ref}` : "/skill:implement-spec", { expandPromptTemplates: true });
+    return;
+  }
+
+  // 4f. Maintain (audit upstream updates & reconcile overrides)
   if (selected === "maintain") {
     pi.sendUserMessage("/skill:maintain", { expandPromptTemplates: true });
     return;
@@ -165,7 +211,7 @@ async function showPalette(pi: ExtensionAPI, ctx: ExtensionContext): Promise<voi
   if (selected === "code-review") {
     const ref = ctx.ui.getEditorText?.()?.trim() || "";
     if (ref) {
-      ctx.ui.setEditorText("");
+      ctx.ui.setEditorText?.("");
       pi.sendUserMessage(`/skill:code-review ${ref}`, { expandPromptTemplates: true });
     } else {
       pi.sendUserMessage("/skill:code-review", { expandPromptTemplates: true });
@@ -177,7 +223,7 @@ async function showPalette(pi: ExtensionAPI, ctx: ExtensionContext): Promise<voi
   if (selected === "verify") {
     const scope = ctx.ui.getEditorText?.()?.trim() || "";
     if (scope) {
-      ctx.ui.setEditorText("");
+      ctx.ui.setEditorText?.("");
       pi.sendUserMessage(`/verify ${scope}`, { expandPromptTemplates: true });
     } else {
       pi.sendUserMessage("/verify", { expandPromptTemplates: true });
@@ -189,7 +235,7 @@ async function showPalette(pi: ExtensionAPI, ctx: ExtensionContext): Promise<voi
   if (selected === "ui-check") {
     const flow = ctx.ui.getEditorText?.()?.trim() || "";
     if (flow) {
-      ctx.ui.setEditorText("");
+      ctx.ui.setEditorText?.("");
       pi.sendUserMessage(`/ui-check ${flow}`, { expandPromptTemplates: true });
     } else {
       pi.sendUserMessage("/ui-check", { expandPromptTemplates: true });
@@ -201,7 +247,7 @@ async function showPalette(pi: ExtensionAPI, ctx: ExtensionContext): Promise<voi
   if (selected === "release-check") {
     const scope = ctx.ui.getEditorText?.()?.trim() || "";
     if (scope) {
-      ctx.ui.setEditorText("");
+      ctx.ui.setEditorText?.("");
       pi.sendUserMessage(`/release-check ${scope}`, { expandPromptTemplates: true });
     } else {
       pi.sendUserMessage("/release-check", { expandPromptTemplates: true });

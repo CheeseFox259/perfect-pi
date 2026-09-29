@@ -90,10 +90,10 @@ export default function questionnaire(pi: ExtensionAPI) {
 		parameters: QuestionnaireParams,
 
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			if (ctx.mode !== "tui") {
+			if (ctx.mode !== "tui" || !ctx.hasUI || !ctx.ui?.custom) {
 				return errorResult("Error: UI not available (running in non-interactive mode)");
 			}
-			if (params.questions.length === 0) {
+			if (!Array.isArray(params.questions) || params.questions.length === 0) {
 				return errorResult("Error: No questions provided");
 			}
 
@@ -103,6 +103,16 @@ export default function questionnaire(pi: ExtensionAPI) {
 				label: q.label || `Q${i + 1}`,
 				allowOther: q.allowOther !== false,
 			}));
+			const ids = new Set<string>();
+			for (const question of questions) {
+				if (ids.has(question.id)) {
+					return errorResult(`Error: Duplicate question id: ${question.id}`, questions);
+				}
+				ids.add(question.id);
+				if ((question.options?.length ?? 0) === 0 && !question.allowOther) {
+					return errorResult(`Error: No options provided for question: ${question.id}`, questions);
+				}
+			}
 
 			const isMulti = questions.length > 1;
 			const totalTabs = questions.length + 1; // questions + Submit
@@ -237,7 +247,7 @@ export default function questionnaire(pi: ExtensionAPI) {
 						return;
 					}
 					if (matchesKey(data, Key.down)) {
-						optionIndex = Math.min(opts.length - 1, optionIndex + 1);
+						optionIndex = opts.length > 0 ? Math.min(opts.length - 1, optionIndex + 1) : 0;
 						refresh();
 						return;
 					}
@@ -261,6 +271,7 @@ export default function questionnaire(pi: ExtensionAPI) {
 					// Select option
 					if (matchesKey(data, Key.enter) && q) {
 						const opt = opts[optionIndex];
+						if (!opt) return;
 						if (opt.isOther) {
 							inputMode = true;
 							inputQuestionId = q.id;
@@ -408,13 +419,19 @@ export default function questionnaire(pi: ExtensionAPI) {
 						cachedLines = undefined;
 					},
 					handleInput,
+					get focused() {
+						return editor.focused;
+					},
+					set focused(value: boolean) {
+						editor.focused = value;
+					},
 				};
 			});
 
-			if (result.cancelled) {
+			if (!result || result.cancelled) {
 				return {
 					content: [{ type: "text", text: "User cancelled the questionnaire" }],
-					details: result,
+					details: result ?? { questions, answers: [], cancelled: true },
 				};
 			}
 

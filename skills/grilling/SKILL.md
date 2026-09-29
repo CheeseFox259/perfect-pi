@@ -35,8 +35,10 @@ In an interactive Pi session, present the frontier questions through the interac
 
 ### Fact-Finding vs Decisions
 
-Finding _facts_ is your job, never the user's. When a frontier question needs a fact from the environment (filesystem, code, tools, etc.), dispatch a sub-agent to find it; don't ask the user for anything you could look up yourself. Don't block on it: a running exploration is an unsettled prerequisite, so only the questions downstream of it wait for the sub-agent to report; ask the rest of the frontier now. The _decisions_ are the user's: put each to them and wait.
+Finding _facts_ is your job, never the user's. Read the filesystem, code, tools, or documentation yourself when practical. Delegate independent fact-finding only when useful: Pi's `subagent` call is blocking, with concurrent work batched in a `tasks` array and an explicit `cwd` per task. Only the `research` tool runs genuinely in the background and writes findings to a named Markdown file. Read that file before treating a prerequisite as settled; do not claim background coding or exploration through a blocking subagent.
+
+When background research is pending, its dependent questions wait; ask the independent frontier now. The _decisions_ are the user's: put them to the human with `question`/`questionnaire` and wait. A cancelled or unanswered tool call is not an answer.
 
 ### Session Completion
 
-The session is done when the frontier is empty: every branch of the design tree visited, nothing left silently assumed. Summarize the agreed design and settled decisions. Do not act on it until the user confirms you have reached a shared understanding.
+The session is done when the frontier is empty: every relevant branch is settled, with unresolved constraints stated explicitly. Summarize the agreed design. Existing session authorization carries forward: if the user already agreed to implementation or local documentation after settling these decisions, continue within that scope without another approval round. Otherwise ask only for the missing decision or authorization. Never let a preset option, elapsed time, or headless execution stand in for the human's answer.

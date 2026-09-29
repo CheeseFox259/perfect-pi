@@ -1,11 +1,22 @@
 #!/usr/bin/env node
-import { spawnSync } from "node:child_process";
-import { createAgentSession, SessionManager, estimateTokens } from "/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent/dist/index.js";
+import { spawnSync, execFileSync } from "node:child_process";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+let sdk;
+try { sdk = await import("@earendil-works/pi-coding-agent"); }
+catch (error) {
+  if (error.code !== "ERR_MODULE_NOT_FOUND") throw error;
+  const npmRoot = execFileSync("npm", ["root", "--global"], { encoding: "utf8" }).trim();
+  sdk = await import(pathToFileURL(join(npmRoot, "@earendil-works/pi-coding-agent/dist/index.js")));
+}
+const { createAgentSession, SessionManager, estimateTokens } = sdk;
 
 const cwd = process.argv[2] || process.cwd();
 const prompt = process.env.PI_MEASURE_PROMPT || "Reply with exactly: ready. Do not use tools.";
-const result = spawnSync("pi", ["--no-session", "--mode", "json", "--print", prompt], {
+const modelArgs = process.env.PI_EVAL_MODEL ? ["--model", process.env.PI_EVAL_MODEL] : [];
+const result = spawnSync("pi", [...modelArgs, "--no-session", "--mode", "json", "--print", prompt], {
   cwd,
+  stdio: ["ignore", "pipe", "pipe"],
   encoding: "utf8",
   timeout: 120_000,
   maxBuffer: 20 * 1024 * 1024,
@@ -32,7 +43,15 @@ try {
   const skillBlock = promptSections.skills ?? "";
   const usages = assistantMessages.map((message) => message.usage).filter(Boolean);
   const firstUsage = usages[0];
+  const budget = {
+    toolSchemaEstimate: Number(process.env.PI_TOOL_SCHEMA_BUDGET || 6000),
+    initialInput: Number(process.env.PI_INITIAL_INPUT_BUDGET || 8000),
+  };
+  const warnings = [];
+  if (estimateTokens({ role: "system", content: serializedToolDefinitions }) > budget.toolSchemaEstimate) warnings.push("Tool schema estimate exceeds budget");
+  if (firstUsage && firstUsage.input + (firstUsage.cacheRead ?? 0) + (firstUsage.cacheWrite ?? 0) > budget.initialInput) warnings.push("Initial input including cache exceeds budget");
   console.log(JSON.stringify({
+    budget: { ...budget, warnings },
     generatedAt: new Date().toISOString(),
     cwd,
     probePrompt: prompt,

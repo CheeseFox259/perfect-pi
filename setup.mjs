@@ -1,6 +1,6 @@
-import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { cp, lstat, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { existsSync, realpathSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 
@@ -30,15 +30,19 @@ function expectedSkillNames(manifest) {
 
 function hasSkill(name) {
   return existsSync(join(agentDir, "skills", name, "SKILL.md"))
-    || existsSync(join(homedir(), ".agents", "skills", name, "SKILL.md"));
+    || existsSync(join(homedir(), ".agents", "skills", name, "SKILL.md"))
+    || existsSync(join(homedir(), ".pi", "agent", "skills", name, "SKILL.md"));
 }
 
 function skillPatterns(manifest, components = null) {
   const names = manifest.skillPolicy?.excludeFromPi ?? [];
   const local = names.map((name) => `-skills/${name}/SKILL.md`);
-  const shared = names
-    .filter((name) => existsSync(join(homedir(), ".agents", "skills", name, "SKILL.md")))
-    .map((name) => `-${join(homedir(), ".agents", "skills", name, "SKILL.md")}`);
+  const duplicated = expectedSkillNames(manifest).filter((name) => {
+    const piPath = join(agentDir, "skills", name, "SKILL.md");
+    const sharedPath = join(homedir(), ".agents", "skills", name, "SKILL.md");
+    return existsSync(piPath) && existsSync(sharedPath) && realpathSync(piPath) !== realpathSync(sharedPath);
+  });
+  const shared = [...new Set([...names, ...duplicated])].map((name) => `-${join(homedir(), ".agents", "skills", name, "SKILL.md")}`);
 
   // Exclude shadowed upstream copies for local overrides so Pi loads local version without collision warnings
   const overrides = [];
@@ -50,9 +54,7 @@ function skillPatterns(manifest, components = null) {
   ]);
   for (const name of overrideSkills) {
     const upstreamPath = join(homedir(), ".agents", "skills", name, "SKILL.md");
-    if (existsSync(upstreamPath)) {
-      overrides.push(`-${upstreamPath}`);
-    }
+    overrides.push(`-${upstreamPath}`);
   }
 
   return [...new Set([...local, ...shared, ...overrides])].map(normalizePath);
@@ -62,7 +64,7 @@ async function walkFiles(directory) {
   if (!existsSync(directory)) return [];
   const result = [];
   for (const entry of await readdir(directory, { withFileTypes: true })) {
-    if (entry.name === ".DS_Store") continue;
+    if (entry.name === ".DS_Store" || entry.name === "__pycache__" || entry.name.endsWith(".pyc")) continue;
     const path = join(directory, entry.name);
     if (entry.isDirectory()) result.push(...(await walkFiles(path)));
     else result.push(path);
@@ -84,6 +86,7 @@ async function managedResourceMap() {
     }
   };
   await add(join(root, "global", "AGENTS.md"), "AGENTS.md");
+  await add(join(root, "global", "agents"), "agents");
   await add(join(root, "global", "prompts"), "prompts");
   await add(join(root, "global", "extensions"), "extensions");
   await add(join(root, "skills"), "skills");
@@ -119,13 +122,65 @@ async function settingsState(manifest, sourceSettings, previousState, components
   return { settingsPath, live, next, managedPackages, currentManagedPatterns };
 }
 
-async function copyResources(resourceMap, dryRun) {
+async function linkedParents(targetDir) {
+  // Upstream skills land in ~/.agents/skills/ and are linked into ~/.pi/agent/skills/.
+  const relativeDir = relative(agentDir, targetDir);
+  if (relativeDir.startsWith("..") || isAbsolute(relativeDir)) return [];
+  const parts = relativeDir.split(sep).filter(Boolean);
+  let current = agentDir;
+  const links = [];
+  for (const part of parts) {
+    current = join(current, part);
+    const info = await lstat(current).catch(() => null);
+    if (info?.isSymbolicLink()) links.push(current);
+  }
+  return links;
+}
+
+function isUpstreamSkillLink(link) {
+  const parts = relative(agentDir, link).split(sep);
+  if (parts.length !== 2 || parts[0] !== "skills") return false;
+  const upstream = join(homedir(), ".agents", "skills", parts[1]);
+  try { return existsSync(upstream) && realpathSync(link) === realpathSync(upstream); }
+  catch { return false; }
+}
+
+async function materializePath(targetDir, dryRun, seen = new Set()) {
+  // Swap each link for a real directory. fs.cp would follow a symlinked parent and
+  // rewrite the upstream install in place, so a local override has to stand alone.
+  // The upstream copy is left intact; skillPolicy exclusions keep Pi off both.
+  for (const link of await linkedParents(targetDir)) {
+    if (seen.has(link)) continue;
+    seen.add(link);
+    if (!isUpstreamSkillLink(link)) {
+      throw new Error(`Refusing to replace an unmanaged symlink: ${link}`);
+    }
+    const resolved = realpathSync(link);
+    if (dryRun) {
+      console.log(`REPLACE SYMLINK ${link} -> ${resolved}`);
+      continue;
+    }
+    const staging = await mkdtemp(join(dirname(link), ".perfect-pi-materialize-"));
+    try {
+      await cp(resolved, staging, { recursive: true, force: true });
+      await unlink(link);
+      await rename(staging, link);
+    } catch (error) {
+      await rm(staging, { recursive: true, force: true });
+      throw error;
+    }
+    console.log(`REPLACE SYMLINK ${link} -> ${resolved}`);
+  }
+}
+
+async function copyResources(resourceMap, dryRun, seen = new Set()) {
   for (const [targetRelative, source] of resourceMap) {
     const target = join(agentDir, targetRelative);
     if (dryRun) {
       console.log(`COPY ${source} -> ${target}`);
       continue;
     }
+    await materializePath(dirname(target), false, seen);
     await mkdir(dirname(target), { recursive: true });
     await cp(source, target);
   }
@@ -179,15 +234,19 @@ async function installMissingPackages(packages, { dryRun, skipInstall }) {
 
 async function installMissingSkills(skillSources, { dryRun, skipInstall, previousSkillRefs, installer }) {
   const { spawnSync } = await import("node:child_process");
+  const installedRefs = { ...previousSkillRefs };
   for (const entry of skillSources.filter((skill) => !skill.source.startsWith("local:"))) {
     const names = entry.selection === "all" ? entry.requiredSkills ?? [] : entry.selection;
-    const missing = names.filter((name) => !existsSync(join(homedir(), ".agents", "skills", name, "SKILL.md")));
-    const sourceChanged = Boolean(entry.ref && previousSkillRefs?.[entry.source] !== entry.ref);
+    const missing = names.filter((name) => !hasSkill(name));
+    const hasPrevious = Boolean(previousSkillRefs && entry.source in previousSkillRefs);
+    const isSourceUpdate = Boolean(hasPrevious && entry.ref && previousSkillRefs[entry.source] !== entry.ref);
+    const isMissingPin = Boolean(entry.ref && !hasPrevious);
+    const sourceChanged = isSourceUpdate || isMissingPin;
     const targets = sourceChanged ? names : missing;
     if (targets.length === 0) continue;
     const selection = entry.selection === "all" ? ["*"] : targets;
     if (skipInstall) {
-      console.log(`SKILLS ${sourceChanged ? "SOURCE UPDATE REQUIRED" : "MISSING"} ${entry.source}: ${targets.join(", ")}`);
+      console.log(`SKILLS ${isSourceUpdate ? "SOURCE UPDATE REQUIRED" : "MISSING"} ${entry.source}: ${targets.join(", ")}`);
       continue;
     }
     if (dryRun) {
@@ -203,27 +262,57 @@ async function installMissingSkills(skillSources, { dryRun, skipInstall, previou
     if (result.error || result.status !== 0) {
       throw result.error ?? new Error(`Could not install skills from ${entry.source}; exit status ${result.status}`);
     }
+    if (entry.ref) installedRefs[entry.source] = entry.ref;
   }
+  return installedRefs;
 }
 
-async function sync({ dryRun = false, skipPackageInstall = false, skipSkillInstall = false } = {}) {
+async function sync({ dryRun = false, skipPackageInstall = false, skipSkillInstall = false, adoptOverrides = false } = {}) {
   const manifest = await readJson(manifestPath);
   const components = await readJson(componentsPath, {});
   const sourceSettings = manifest.managedSettings ?? {};
   const resourceMap = await managedResourceMap();
   const previousState = await readJson(statePath, {});
   const previousResources = new Set(previousState.resources ?? []);
+  const seenMaterialized = new Set();
+  if (dryRun) {
+    for (const [targetRelative] of resourceMap) {
+      await materializePath(dirname(join(agentDir, targetRelative)), true, seenMaterialized);
+    }
+  }
   const unclaimed = [];
   for (const [targetRelative, source] of resourceMap) {
     const target = join(agentDir, targetRelative);
     if (!existsSync(target) || previousResources.has(targetRelative)) continue;
+    // Only installer-owned upstream links can be replaced without treating the
+    // linked file as an unclaimed user edit.
+    const links = await linkedParents(dirname(target));
+    const unmanagedLink = links.find((link) => !isUpstreamSkillLink(link));
+    if (unmanagedLink) throw new Error(`Refusing to replace an unmanaged symlink: ${unmanagedLink}`);
+    if (links.length > 0) continue;
     const [sourceContent, targetContent] = await Promise.all([readFile(source, "utf8"), readFile(target, "utf8")]);
     if (sourceContent !== targetContent) unclaimed.push(targetRelative);
   }
-  if (unclaimed.length > 0) {
-    throw new Error(`Refusing to overwrite Pi resources that differ from the repo and are not registered as managed:\n${unclaimed.map((item) => `- ${item}`).join("\n")}`);
+  const adoptable = (target) => {
+    const parts = target.split(sep);
+    return adoptOverrides && parts[0] === "skills" && components.skills?.[parts[1]]?.type === "override";
+  };
+  const refused = unclaimed.filter((target) => !adoptable(target));
+  if (refused.length > 0) {
+    throw new Error(`Refusing to overwrite Pi resources that differ from the repo and are not registered as managed:\n${refused.map((item) => `- ${item}`).join("\n")}\nFor an intentional skill migration, --adopt-overrides backs up only registered override files before claiming them.`);
   }
-  const settings = await settingsState(manifest, sourceSettings, previousState, components);
+  if (unclaimed.length) {
+    const backupRoot = join(agentDir, ".perfect-pi-backups", `${Date.now()}-${process.pid}`);
+    for (const target of unclaimed) {
+      const backup = join(backupRoot, target);
+      console.log(`BACKUP OVERRIDE ${target} -> ${backup}`);
+      if (!dryRun) {
+        await mkdir(dirname(backup), { recursive: true });
+        await cp(join(agentDir, target), backup);
+      }
+    }
+  }
+  let settings = await settingsState(manifest, sourceSettings, previousState, components);
   const nextResources = [...resourceMap.keys()].sort();
   if (!dryRun) await mkdir(agentDir, { recursive: true });
   for (const oldResource of previousResources) {
@@ -232,21 +321,28 @@ async function sync({ dryRun = false, skipPackageInstall = false, skipSkillInsta
     if (dryRun) console.log(`REMOVE MANAGED ${target}`);
     else await rm(target, { recursive: true, force: true });
   }
-  await copyResources(resourceMap, dryRun);
-  await installMissingSkills(manifest.skills ?? [], {
+  const installedSkillRefs = await installMissingSkills(manifest.skills ?? [], {
     dryRun,
     skipInstall: skipSkillInstall,
     previousSkillRefs: previousState.skillRefs ?? {},
     installer: manifest.skillInstaller ?? "skills@1.7.0",
   });
+  await copyResources(resourceMap, dryRun);
+  // Discovery depends on the resulting layout; include any physical duplicates
+  // introduced by the installer or by materializing an override.
+  settings = await settingsState(manifest, sourceSettings, previousState, components);
   await installMissingPackages(settings.managedPackages, { dryRun, skipInstall: skipPackageInstall });
+  const manifestSources = new Set((manifest.skills ?? []).map((s) => s.source));
+  const activeSkillRefs = Object.fromEntries(
+    Object.entries(installedSkillRefs).filter(([source]) => manifestSources.has(source))
+  );
   if (!dryRun) {
     await writeFile(settings.settingsPath, `${JSON.stringify(settings.next, null, 2)}\n`);
     await writeFile(statePath, `${JSON.stringify({
       schemaVersion: 1,
       packages: settings.managedPackages,
       skillPatterns: settings.currentManagedPatterns,
-      skillRefs: Object.fromEntries((manifest.skills ?? []).filter((skill) => skill.ref).map((skill) => [skill.source, skill.ref])),
+      skillRefs: activeSkillRefs,
       resources: nextResources,
     }, null, 2)}\n`);
   } else {
@@ -292,7 +388,7 @@ export async function inspect() {
   const patternsMatch = desiredPatterns.every((pattern) => livePatterns.includes(pattern)) && stalePatterns.length === 0;
   mark("skills policy", patternsMatch ? "SYNCED" : "DRIFTED", `${desiredPatterns.length} managed exclusions; ${stalePatterns.length} stale managed`);
 
-  for (const kind of ["prompts", "extensions"]) {
+  for (const kind of ["agents", "prompts", "extensions"]) {
     const entries = [...resourceMap.entries()].filter(([target]) => target.startsWith(`${kind}/`));
     let status = "SYNCED";
     for (const [targetRelative, source] of entries) {
@@ -349,6 +445,7 @@ async function main() {
     dryRun: args.has("--dry-run"),
     skipPackageInstall: args.has("--skip-package-install"),
     skipSkillInstall: args.has("--skip-skill-install"),
+    adoptOverrides: args.has("--adopt-overrides"),
   });
   if (!args.has("--dry-run")) {
     console.log(`Perfect Pi synced to ${agentDir}. Restart Pi or run /reload.`);

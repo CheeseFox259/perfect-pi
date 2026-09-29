@@ -10,7 +10,7 @@ Maintain the integrity of the Perfect Pi engineering harness, its upstream skill
 ## Core Philosophy: 3-Way Lineage Tracking
 
 Perfect Pi uses an explicit three-way lineage model for all components recorded in `components.json`:
-- **Base**: The exact upstream commit (`pinnedRef`) when the component was introduced or overridden.
+- **Base**: The upstream commit recorded as each override's `baseRef`; the source-wide installed target is `upstreams[source].pinnedRef`.
 - **Upstream**: The latest remote upstream commit from official repositories (e.g., `mattpocock/skills`).
 - **Local**: Our enhanced version containing local capabilities (e.g., interactive TUI `questionnaire` dispatch, `e` key amendments).
 
@@ -36,7 +36,7 @@ Read the JSON output:
 
 - If all upstreams are **UP_TO_DATE**:
   - Inform the user that all upstream skills and local overrides are fully aligned.
-  - Summarize the active local overrides (`grilling`) and custom skills (`route`, `verify-product`, `project-architecture`).
+  - Summarize the active local overrides and custom skills, read from `components.json`: entries under `skills` with `type: "override"` are local overrides, `type: "custom"` are harness-only skills. Read the list from the registry rather than naming it, so the summary cannot drift as overrides are added.
   - Stop here unless the user requests a diff review.
 
 - If updates are available:
@@ -57,9 +57,15 @@ When an override is affected or when the user requests inspection:
 ### Step 4: Execution & Verification
 
 1. When an upgrade is approved:
-   - Update `pinnedRef` in `manifest.json` and `components.json`.
-   - For overrides, execute `git merge-file` (or `node reconcile.mjs 3way-test <skill>`) to verify clean merge without syntax corruption.
+   - **Perform actual 3-way merge**: Retrieve the actual new upstream file at `remoteHead` (e.g., from upstream git cache or fetch). The three inputs to `git merge-file` must be the local enhanced file (`<localPath>`), the base upstream file at `baseRef` (`<basePath>`), and the target new upstream file (`<upstreamLatestPath>`):
+     ```bash
+     git merge-file -p -L local-enhancement -L upstream-base -L upstream-latest <localPath> <basePath> <upstreamLatestPath>
+     ```
+     Do NOT use a selfmerge (merging base against itself or local against itself) as upgrade verification; a selfmerge cannot test for real conflicts between new upstream changes and local enhancements.
+   - Verify the merge exits with 0 conflicts and inspect the output to ensure local enhancements are fully preserved alongside upstream improvements.
+   - Write the cleanly merged content to `<localPath>`.
+   - **Maintain correct ref fields**: Update `manifest.json` at `skills[].ref` for the source and `components.json` at `upstreams[source].pinnedRef`. Advance a reconciled override's `baseRef` only after merging and verifying all its changed companion files as well as `SKILL.md`. If Option B was chosen, leave the override's `baseRef` unchanged. Never add a `pinnedRef` field to the manifest.
    - Run `node setup.mjs --skip-package-install` to sync to `~/.pi/agent`.
-   - Run `node doctor.mjs` to ensure all 12 diagnostic checks are `SYNCED`.
-2. Commit changes with a descriptive message (e.g. `chore(upstream): reconcile mattpocock/skills to <ref> preserving TUI enhancements`).
+   - Run `node doctor.mjs`, the repository tests, and the skill compatibility audit. Report the actual statuses; a clean merge alone does not validate runtime behavior.
+2. Commit the reviewed files only when local commits are covered by the user's authorization; preserve unrelated edits. Use a descriptive message (e.g. `chore(upstream): reconcile skills preserving Pi adaptations`).
 3. Report final confirmation and suggest `/reload`.

@@ -50,7 +50,7 @@ export default function question(pi: ExtensionAPI) {
 		executionMode: "sequential",
 
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			if (ctx.mode !== "tui") {
+			if (ctx.mode !== "tui" || !ctx.hasUI || !ctx.ui?.custom) {
 				return {
 					content: [{ type: "text", text: "Error: UI not available (running in non-interactive mode)" }],
 					details: {
@@ -61,7 +61,7 @@ export default function question(pi: ExtensionAPI) {
 				};
 			}
 
-			if (params.options.length === 0) {
+			if (!Array.isArray(params.options) || params.options.length === 0) {
 				return {
 					content: [{ type: "text", text: "Error: No options provided" }],
 					details: { question: params.question, options: [], answer: null } as QuestionDetails,
@@ -131,6 +131,7 @@ export default function question(pi: ExtensionAPI) {
 						// Press 'e' or 'E' on any option to edit / amend
 						if (data === "e" || data === "E") {
 							const selected = allOptions[optionIndex];
+							if (!selected) return;
 							editMode = true;
 							if (selected.isOther) {
 								editor.setText("");
@@ -143,6 +144,7 @@ export default function question(pi: ExtensionAPI) {
 
 						if (matchesKey(data, Key.enter)) {
 							const selected = allOptions[optionIndex];
+							if (!selected) return;
 							if (selected.isOther) {
 								editMode = true;
 								editor.setText("");
@@ -229,6 +231,12 @@ export default function question(pi: ExtensionAPI) {
 							cachedLines = undefined;
 						},
 						handleInput,
+						get focused() {
+							return editor.focused;
+						},
+						set focused(value: boolean) {
+							editor.focused = value;
+						},
 					};
 				},
 			);

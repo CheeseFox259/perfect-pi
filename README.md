@@ -2,6 +2,8 @@
 
 A versioned Pi environment for full-stack engineering with Matt Pocock Skills as the methodology layer.
 
+- [中文使用指南](docs/USAGE.zh-CN.md)
+
 ## Source of truth
 
 `manifest.json` owns managed runtime settings, package versions, Skill source commits and Skill visibility policy. `global/` and `skills/` own local Pi resources. `setup.mjs` installs missing Skills from the pinned upstream commits in the manifest; existing Skills remain untouched when their source pin is unchanged. It preserves user-specific provider/model settings and unrelated packages. A small ownership registry in `~/.pi/agent/.perfect-pi-state.json` lets sync remove only files it previously installed. If a destination file was independently changed before ownership was recorded, setup refuses to overwrite it.
@@ -12,15 +14,36 @@ node setup.mjs
 node doctor.mjs
 ```
 
-Package install can be skipped for isolated configuration tests with `--skip-package-install`; Skill install can be skipped with `--skip-skill-install`. Doctor then reports absent dependencies/Skills as `MISSING` and changed source pins as `DRIFTED`.
+Package install can be skipped for isolated configuration tests with `--skip-package-install`; Skill install can be skipped with `--skip-skill-install`. Skipped installs retain the last known source ref. Doctor reports absent dependencies/Skills as `MISSING` and changed or unknown source pins as `DRIFTED`.
+
+For an intentional migration of existing physical upstream skill files, use `--adopt-overrides` (first with `--dry-run`). Only registered override files are eligible; their previous contents are backed up under `~/.pi/agent/.perfect-pi-backups/` before ownership is recorded. Unrelated resources and user-owned symlinks remain protected. Materializing an upstream symlink preserves its companion references without modifying the shared upstream directory.
 
 ## Entry points
 
 - `/skill:route` recommends one next workflow and stops. It does not run the route.
-- Matt's explicit workflow skills own grilling, implementation, tickets, wayfinding, code review, and handoff.
+- Pi-adapted workflows own grilling, implementation, tickets, code review, handoff, triage, and wayfinding. Interactive decisions use `question`/`questionnaire`; session answers and authorization carry forward.
 - `/verify`, `/ui-check`, and `/release-check` are short repeatable evidence workflows.
-- Use `/skill:code-review` and `/skill:handoff` as the canonical review and handoff entries.
+- Use `/skill:code-review` for working-tree changes (including untracked files), committed diffs, or current-tree snapshot audits. Ordinary reviews need no tracker. `/skill:implement` uses working-tree review before committing. `/skill:handoff` records a continuation pointer.
 - `/skill:maintain` audits upstream repository updates, diffs overrides, and executes 3-way merges.
+
+## Implementation ladder
+
+Implementation routing first asks whether agreed decisions need to outlive this session, then whether the work fits one session.
+
+| Route | When | Produces |
+|-------|------|----------|
+| `/skill:implement` | Fits one session, direction already agreed | The change itself, via TDD at pre-agreed seams |
+| `/skill:to-spec` | Agreed work deferred to another session or subagent | A concise spec of decisions, acceptance and testing in the tracker |
+| `/skill:to-tickets` | More than a session of work, from an existing spec or plan | Vertical-slice tickets with blocking edges |
+| `/skill:implement-spec` | An approved spec that already has a ticket graph | Verified integration branch; independent tickets may use parallel worktrees |
+
+`/skill:route` recommends the next path without executing it. `to-spec`, `to-tickets`, and `implement-spec` require `docs/agents/issue-tracker.md`. The local implementation-ticket contract keeps triage eligibility separate from `open`, `claimed`, and verified `complete`; only integrated and verified tickets unblock dependencies.
+
+### Per-repo tracker setup
+
+`/skill:setup-matt-pocock-skills` writes configuration once per repo: `docs/agents/issue-tracker.md`, `docs/agents/triage-labels.md`, `docs/agents/domain.md`, and an `## Agent skills` block in `AGENTS.md` (pointing to existing guidance where appropriate). Local specs live in `.scratch/<feature>/spec.md` and tickets in `.scratch/<feature>/issues/`. Commit approved task artifacts before dispatching worktrees.
+
+GitHub/GitLab ticket bodies remain authoritative for requirements. Remote graphs use a versioned local execution ledger with remote URLs and a one-to-one ticket mapping for claims, failed attempts and verified commits. Remote issue closure alone never unlocks a dependency. External publication and PR writes use existing explicit authorization; missing authorization leaves a concrete local draft. Triage and wayfinder have Pi-native workflows; live remote tracker behavior still needs validation in the target project.
 
 ## Maintenance & Upstream Lineage
 
@@ -29,7 +52,8 @@ Package install can be skipped for isolated configuration tests with `--skip-pac
 ```bash
 node reconcile.mjs status       # Check remote upstream updates and override health
 node reconcile.mjs diff grilling # Inspect delta between upstream base and local enhancement
-node reconcile.mjs 3way-test grilling # Verify 3-way merge mechanism
+node reconcile.mjs 3way-test grilling --upstream-ref <commit> # Test the actual incoming version
+node reconcile.mjs status --offline --json # Check registry pin alignment without network
 ```
 
 ## Context and runtime measurements
@@ -40,14 +64,15 @@ node observe.mjs /path/to/pi-session.jsonl
 node route-smoke.mjs /tmp/route-results.json
 ```
 
-`measure.mjs` runs one tiny no-tool Pi request to collect assembled prompt sections, the actually active tool set, local schema estimates, and provider-reported first-request usage. `observe.mjs` reads existing Pi JSONL events for usage/cache, compaction, skill loads, and tool categories. Neither installs a context manager or rewrites token accounting.
+`measure.mjs` runs one tiny no-tool Pi request to collect assembled prompt sections, the actually active tool set, local schema estimates, and provider-reported first-request usage. Set `PI_EVAL_MODEL=provider/model` to pin measurement and route probes. Budget warnings default to 6,000 estimated tool-schema tokens and 8,000 initial input tokens, including cache; override with `PI_TOOL_SCHEMA_BUDGET` and `PI_INITIAL_INPUT_BUDGET`. `observe.mjs` reads existing JSONL events. These scripts do not rewrite accounting. Schema estimates are comparable locally; provider token counts and costs need the same model and cache conditions for fair comparison.
 
 ## Capabilities
 
-- Matt Skills provide the engineering workflow.
-- `pi-matt-subagent` provides blocking parallel agents and background research.
+- Pi-adapted Matt Skills provide the engineering workflow. The managed inventory is 42 upstream skills (31 local adaptations, 11 portable unchanged) plus 4 Pi-native skills. See [the compatibility inventory](docs/skill-audit-remaining.md); `node skill-audit.mjs` checks coverage, lineage, visibility and known incompatible invocation patterns.
+- New sessions start with core tools and `subagent`. The compact `capabilities` tool enables `web`, `browser`, `mcp`, `lsp`, `process`, or `research` on demand. `/tools` remains the manual selector. Session selections persist, and explicit CLI allow/deny lists remain authoritative for this loader.
+- `pi-matt-subagent` provides blocking parallel agents and background research; Perfect Pi adds a model-inheriting `implementer` role for ticket worktrees.
 - `pi-web-access` and `pi-mcp-adapter` provide web and external-system access.
-- `pi-agent-browser-native` exposes a compact always-on browser surface and lazily activated advanced tools. Install upstream `agent-browser` separately and keep it on `PATH`.
+- `pi-agent-browser-native` exposes browser verification after enabling the `browser` capability, with additional advanced tools loaded through its native loader. Install upstream `agent-browser` separately and keep it on `PATH`.
 - LSP, managed processes, deterministic guardrails, and `pi-cc-extensions` support verification and UX.
 
 ## Verification tiers
@@ -59,3 +84,14 @@ node route-smoke.mjs /tmp/route-results.json
 For product-level completion, use `verify-product`. Results must distinguish verified, not run, blocked, and not applicable.
 
 User-specific credentials, sessions, models, and unrelated settings stay local. Do not install duplicate plan, todo, memory, context-pruning, or subagent systems.
+
+## Checks
+
+```bash
+node --test *.test.mjs
+node skill-audit.mjs
+node doctor.mjs
+PI_EVAL_MODEL=provider/model node route-smoke.mjs /tmp/route-results.json
+```
+
+Unit and integration tests exercise the actual Pi extension loader/TUI handlers, isolated installers, real Git merge fixtures, read-only Pi evaluation subprocesses, and capability loading. Route probes call the configured model. These checks do not certify arbitrary applications, live GitHub/GitLab mutations, production deployment, or every optional external runtime.
