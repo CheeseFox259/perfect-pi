@@ -40,6 +40,9 @@
       "writing-for-agents",
       "codex-handoff",
       "tabbit"
+    ],
+    "shadowedOverrides": [
+      "grilling"
     ]
   },
   "skills": [

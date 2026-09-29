@@ -9,6 +9,7 @@ const agentDir = process.env.PI_CODING_AGENT_DIR
   ? resolve(process.env.PI_CODING_AGENT_DIR.replace(/^~(?=\/|$)/, homedir()))
   : join(homedir(), ".pi", "agent");
 const manifestPath = join(root, "manifest.json");
+const componentsPath = join(root, "components.json");
 const statePath = join(agentDir, ".perfect-pi-state.json");
 
 const readJson = async (path, fallback = {}) => {
@@ -32,13 +33,29 @@ function hasSkill(name) {
     || existsSync(join(homedir(), ".agents", "skills", name, "SKILL.md"));
 }
 
-function skillPatterns(manifest) {
+function skillPatterns(manifest, components = null) {
   const names = manifest.skillPolicy?.excludeFromPi ?? [];
   const local = names.map((name) => `-skills/${name}/SKILL.md`);
   const shared = names
     .filter((name) => existsSync(join(homedir(), ".agents", "skills", name, "SKILL.md")))
     .map((name) => `-${join(homedir(), ".agents", "skills", name, "SKILL.md")}`);
-  return [...local, ...shared].map(normalizePath);
+
+  // Exclude shadowed upstream copies for local overrides so Pi loads local version without collision warnings
+  const overrides = [];
+  const overrideSkills = new Set([
+    ...(manifest.skillPolicy?.shadowedOverrides ?? []),
+    ...(components?.skills
+      ? Object.entries(components.skills).filter(([_, s]) => s.type === "override").map(([k]) => k)
+      : []),
+  ]);
+  for (const name of overrideSkills) {
+    const upstreamPath = join(homedir(), ".agents", "skills", name, "SKILL.md");
+    if (existsSync(upstreamPath)) {
+      overrides.push(`-${upstreamPath}`);
+    }
+  }
+
+  return [...new Set([...local, ...shared, ...overrides])].map(normalizePath);
 }
 
 async function walkFiles(directory) {
@@ -77,12 +94,12 @@ function normalizePath(value) {
   return value.replaceAll("\\", "/");
 }
 
-async function settingsState(manifest, sourceSettings, previousState) {
+async function settingsState(manifest, sourceSettings, previousState, components = null) {
   const settingsPath = join(agentDir, "settings.json");
   const live = await readJson(settingsPath, {});
   const managedPackages = packageSources(manifest);
   const previousPackages = new Set(previousState.packages ?? []);
-  const currentManagedPatterns = skillPatterns(manifest);
+  const currentManagedPatterns = skillPatterns(manifest, components);
   const previousPatterns = new Set(previousState.skillPatterns ?? []);
   const existingPackages = Array.isArray(live.packages) ? live.packages : [];
   const unmanagedPackages = existingPackages.filter((pkg) => {
@@ -191,6 +208,7 @@ async function installMissingSkills(skillSources, { dryRun, skipInstall, previou
 
 async function sync({ dryRun = false, skipPackageInstall = false, skipSkillInstall = false } = {}) {
   const manifest = await readJson(manifestPath);
+  const components = await readJson(componentsPath, {});
   const sourceSettings = manifest.managedSettings ?? {};
   const resourceMap = await managedResourceMap();
   const previousState = await readJson(statePath, {});
@@ -205,7 +223,7 @@ async function sync({ dryRun = false, skipPackageInstall = false, skipSkillInsta
   if (unclaimed.length > 0) {
     throw new Error(`Refusing to overwrite Pi resources that differ from the repo and are not registered as managed:\n${unclaimed.map((item) => `- ${item}`).join("\n")}`);
   }
-  const settings = await settingsState(manifest, sourceSettings, previousState);
+  const settings = await settingsState(manifest, sourceSettings, previousState, components);
   const nextResources = [...resourceMap.keys()].sort();
   if (!dryRun) await mkdir(agentDir, { recursive: true });
   for (const oldResource of previousResources) {
@@ -240,12 +258,13 @@ async function sync({ dryRun = false, skipPackageInstall = false, skipSkillInsta
 
 export async function inspect() {
   const manifest = await readJson(manifestPath);
+  const components = await readJson(componentsPath, {});
   const resourceMap = await managedResourceMap();
   const liveSettingsPath = join(agentDir, "settings.json");
   const liveSettings = await readJson(liveSettingsPath, {});
   const desiredPackages = packageSources(manifest);
   const livePackages = (liveSettings.packages ?? []).map((pkg) => typeof pkg === "string" ? pkg : pkg?.source).filter(Boolean);
-  const desiredPatterns = skillPatterns(manifest);
+  const desiredPatterns = skillPatterns(manifest, components);
   const previousState = await readJson(statePath, {});
   const previousPackages = new Set(previousState.packages ?? []);
   const previousPatterns = new Set(previousState.skillPatterns ?? []);
