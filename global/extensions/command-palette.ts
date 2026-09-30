@@ -1,5 +1,70 @@
+import { execFileSync } from "node:child_process";
+import { existsSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { DynamicBorder, type ExtensionAPI, type ExtensionContext, type Model } from "@earendil-works/pi-coding-agent";
 import { Container, Key, SelectList, Text, type SelectItem } from "@earendil-works/pi-tui";
+
+function discoverSpecs(cwd: string): { value: string; label: string; description: string }[] {
+  if (!cwd) return [];
+  const scratchDir = join(cwd, ".scratch");
+  if (!existsSync(scratchDir)) return [];
+  try {
+    return readdirSync(scratchDir, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => {
+        const specPath = join(".scratch", d.name, "spec.md");
+        const issuesDir = join(scratchDir, d.name, "issues");
+        const ticketCount = existsSync(issuesDir)
+          ? readdirSync(issuesDir).filter((f) => f.endsWith(".md")).length
+          : 0;
+        return { name: d.name, specPath, hasSpec: existsSync(join(cwd, specPath)), ticketCount };
+      })
+      .filter((f) => f.hasSpec)
+      .map((f) => ({
+        value: f.specPath,
+        label: f.name,
+        description: f.ticketCount > 0 ? `${f.ticketCount} ticket(s)` : "spec.md",
+      }));
+  } catch {
+    return [];
+  }
+}
+
+function discoverGitTargets(cwd: string): SelectItem[] {
+  if (!cwd) return [];
+  const items: SelectItem[] = [];
+  const run = (args: string[]): string => {
+    try { return execFileSync("git", args, { cwd, encoding: "utf8", timeout: 3000 }).trim(); }
+    catch { return ""; }
+  };
+  // Working tree
+  const diffStat = run(["diff", "--stat", "--no-color"]);
+  if (diffStat) {
+    const fileCount = diffStat.split("\n").length - 1;
+    items.push({ value: "__working__", label: "Working tree changes", description: `${fileCount} file(s) changed` });
+  }
+  // Staged
+  const stagedStat = run(["diff", "--cached", "--stat", "--no-color"]);
+  if (stagedStat) {
+    const fileCount = stagedStat.split("\n").length - 1;
+    items.push({ value: "__staged__", label: "Staged changes", description: `${fileCount} file(s) staged` });
+  }
+  // Last commit
+  const lastCommit = run(["log", "-1", "--oneline", "--no-color"]);
+  if (lastCommit) {
+    items.push({ value: "HEAD~1..HEAD", label: "Last commit", description: lastCommit.slice(0, 60) });
+  }
+  // Recent branches (non-current, up to 5)
+  const currentBranch = run(["branch", "--show-current"]);
+  const branches = run(["branch", "--sort=-committerdate", "--format=%(refname:short)", "--no-color"])
+    .split("\n")
+    .filter((b) => b && b !== currentBranch)
+    .slice(0, 5);
+  for (const branch of branches) {
+    items.push({ value: `${branch}..HEAD`, label: `vs ${branch}`, description: `Diff from ${branch} to HEAD` });
+  }
+  return items;
+}
 
 const MAIN_ITEMS: SelectItem[] = [
   { value: "route", label: "Route", description: "Recommend next workflow (/skill:route)" },
@@ -177,12 +242,24 @@ async function showPalette(pi: ExtensionAPI, ctx: ExtensionContext): Promise<voi
   // 4d. Tickets (break a spec or plan into vertical slices with blocking edges)
   if (selected === "tickets") {
     let ref = ctx.ui.getEditorText?.()?.trim() || "";
-    if (!ref) {
-      const input = await ctx.ui.input?.("Spec to break into tickets", "Enter a spec path, issue number, or leave empty to use the conversation...");
-      if (input == null) return;
-      ref = input.trim();
-    } else {
+    if (ref) {
       ctx.ui.setEditorText?.("");
+    } else {
+      const specs = discoverSpecs(ctx.cwd);
+      const items: SelectItem[] = [
+        { value: "__conversation__", label: "Use current conversation", description: "Break the discussed plan into tickets" },
+        ...specs,
+        { value: "__custom__", label: "Type a path…", description: "Enter a spec path or issue number" },
+      ];
+      const chosen = await selectOption<string>(ctx, "Spec → Tickets", "Select a spec to break into ticket slices", items);
+      if (chosen == null) return;
+      if (chosen === "__custom__") {
+        const input = await ctx.ui.input?.("Spec to break into tickets", "Enter a spec path or issue number…");
+        if (!input?.trim()) return;
+        ref = input.trim();
+      } else if (chosen !== "__conversation__") {
+        ref = chosen;
+      }
     }
     pi.sendUserMessage(ref ? `/skill:to-tickets ${ref}` : "/skill:to-tickets", { expandPromptTemplates: true });
     return;
@@ -191,12 +268,24 @@ async function showPalette(pi: ExtensionAPI, ctx: ExtensionContext): Promise<voi
   // 4e. Implement spec (work the ticket graph frontier with subagents)
   if (selected === "implement-spec") {
     let ref = ctx.ui.getEditorText?.()?.trim() || "";
-    if (!ref) {
-      const input = await ctx.ui.input?.("Spec to implement", "Enter a spec path or issue number, or leave empty to use the conversation...");
-      if (input == null) return;
-      ref = input.trim();
-    } else {
+    if (ref) {
       ctx.ui.setEditorText?.("");
+    } else {
+      const specs = discoverSpecs(ctx.cwd);
+      const items: SelectItem[] = [
+        { value: "__conversation__", label: "Use current conversation", description: "Implement from the discussed spec" },
+        ...specs,
+        { value: "__custom__", label: "Type a path…", description: "Enter a spec path or issue number" },
+      ];
+      const chosen = await selectOption<string>(ctx, "Implement Spec", "Select a spec to implement", items);
+      if (chosen == null) return;
+      if (chosen === "__custom__") {
+        const input = await ctx.ui.input?.("Spec to implement", "Enter a spec path or issue number…");
+        if (!input?.trim()) return;
+        ref = input.trim();
+      } else if (chosen !== "__conversation__") {
+        ref = chosen;
+      }
     }
     pi.sendUserMessage(ref ? `/skill:implement-spec ${ref}` : "/skill:implement-spec", { expandPromptTemplates: true });
     return;
@@ -208,27 +297,61 @@ async function showPalette(pi: ExtensionAPI, ctx: ExtensionContext): Promise<voi
     return;
   }
 
-  // 5. Code review (passes optional diff ref from editor or asks)
+  // 5. Code review (git-aware target picker)
   if (selected === "code-review") {
-    const ref = ctx.ui.getEditorText?.()?.trim() || "";
+    let ref = ctx.ui.getEditorText?.()?.trim() || "";
     if (ref) {
       ctx.ui.setEditorText?.("");
-      pi.sendUserMessage(`/skill:code-review ${ref}`, { expandPromptTemplates: true });
     } else {
-      pi.sendUserMessage("/skill:code-review", { expandPromptTemplates: true });
+      const gitItems = discoverGitTargets(ctx.cwd);
+      const items: SelectItem[] = [
+        ...gitItems,
+        { value: "__custom__", label: "Type a ref…", description: "Enter a branch, commit, or diff range" },
+      ];
+      if (items.length > 1) {
+        const chosen = await selectOption<string>(ctx, "Code Review", "Select what to review", items);
+        if (chosen == null) return;
+        if (chosen === "__working__" || chosen === "__staged__") {
+          // Let code-review skill auto-detect
+          ref = "";
+        } else if (chosen === "__custom__") {
+          const input = await ctx.ui.input?.("Code Review", "Enter a ref, branch, or diff range (e.g. main..HEAD)…");
+          if (!input?.trim()) return;
+          ref = input.trim();
+        } else {
+          ref = chosen;
+        }
+      }
     }
+    pi.sendUserMessage(ref ? `/skill:code-review ${ref}` : "/skill:code-review", { expandPromptTemplates: true });
     return;
   }
 
-  // 6. Verify (passes optional scope from editor)
+  // 6. Verify (scope picker)
   if (selected === "verify") {
-    const scope = ctx.ui.getEditorText?.()?.trim() || "";
+    let scope = ctx.ui.getEditorText?.()?.trim() || "";
     if (scope) {
       ctx.ui.setEditorText?.("");
-      pi.sendUserMessage(`/verify ${scope}`, { expandPromptTemplates: true });
     } else {
-      pi.sendUserMessage("/verify", { expandPromptTemplates: true });
+      const items: SelectItem[] = [
+        { value: "", label: "All checks", description: "Run every available verification" },
+        { value: "tests", label: "Tests only", description: "Run the project test suite" },
+        { value: "types", label: "Type check", description: "Run the type checker" },
+        { value: "build", label: "Build", description: "Verify the project builds cleanly" },
+        { value: "lint", label: "Lint", description: "Run linter checks" },
+        { value: "__custom__", label: "Type a scope…", description: "Enter a custom verification scope" },
+      ];
+      const chosen = await selectOption<string>(ctx, "Verify", "Select verification scope", items);
+      if (chosen == null) return;
+      if (chosen === "__custom__") {
+        const input = await ctx.ui.input?.("Verify", "Enter a custom scope…");
+        if (!input?.trim()) return;
+        scope = input.trim();
+      } else {
+        scope = chosen;
+      }
     }
+    pi.sendUserMessage(scope ? `/verify ${scope}` : "/verify", { expandPromptTemplates: true });
     return;
   }
 
@@ -268,9 +391,9 @@ async function showPalette(pi: ExtensionAPI, ctx: ExtensionContext): Promise<voi
     return;
   }
 
-  // 11. Tmux ticket supervisor
+  // 11. Tmux ticket supervisor (triggers interactive selection)
   if (selected === "tmux-tickets") {
-    pi.sendUserMessage("/tmux-tickets status", { expandPromptTemplates: true });
+    pi.sendUserMessage("/tmux-tickets", { expandPromptTemplates: true });
     return;
   }
 }

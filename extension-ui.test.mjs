@@ -123,8 +123,6 @@ test("all three extensions handle unavailable UI even in a TUI context", async (
 });
 const workflowActions = [
   { label: "Spec", index: 2, command: "/skill:to-spec" },
-  { label: "Tickets", index: 3, command: "/skill:to-tickets" },
-  { label: "Implement spec", index: 4, command: "/skill:implement-spec" },
 ];
 
 for (const action of workflowActions) {
@@ -142,6 +140,37 @@ for (const action of workflowActions) {
       await runPalette(ui);
       assert.deepEqual(ui.messages, [{ text: expected, options: { expandPromptTemplates: true } }]);
     }
+  });
+}
+
+// Tickets and Implement spec use SelectList-based spec discovery
+const selectWorkflowActions = [
+  { label: "Tickets", index: 3, command: "/skill:to-tickets" },
+  { label: "Implement spec", index: 4, command: "/skill:implement-spec" },
+];
+
+for (const action of selectWorkflowActions) {
+  test(`${action.label}: cancelled selection sends no message`, async () => {
+    const ui = uiContext({ scripts: [choosePalette(action.index), [key.esc]] });
+    await runPalette(ui);
+    assert.deepEqual(ui.messages, []);
+  });
+
+  test(`${action.label}: conversation selection, custom ref, and editor bypass`, async () => {
+    // Select "Use current conversation" (first item)
+    let ui = uiContext({ scripts: [choosePalette(action.index), [key.enter]] });
+    await runPalette(ui);
+    assert.deepEqual(ui.messages, [{ text: action.command, options: { expandPromptTemplates: true } }]);
+
+    // Select "Type a path..." (second item since no .scratch exists) then enter ref
+    ui = uiContext({ scripts: [choosePalette(action.index), [key.down, key.enter]], inputs: ["  docs/spec.md  "] });
+    await runPalette(ui);
+    assert.deepEqual(ui.messages, [{ text: `${action.command} docs/spec.md`, options: { expandPromptTemplates: true } }]);
+
+    // Editor text bypasses selection entirely
+    ui = uiContext({ scripts: [choosePalette(action.index)], editorText: "  my-spec.md  " });
+    await runPalette(ui);
+    assert.deepEqual(ui.messages, [{ text: `${action.command} my-spec.md`, options: { expandPromptTemplates: true } }]);
   });
 }
 
