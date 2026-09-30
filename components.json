@@ -223,6 +223,11 @@
       "localPath": "global/extensions/subagent-policy.ts",
       "description": "Enforce a session-scoped model allowlist and default thinking level for subagent and research children"
     },
+    "tmux-supervisor": {
+      "type": "custom",
+      "localPath": "global/extensions/tmux-supervisor.ts",
+      "description": "Supervise spec ticket execution across parallel tmux sessions with a live observability dashboard"
+    },
     "structured-output": {
       "type": "custom",
       "localPath": "global/extensions/structured-output.ts",

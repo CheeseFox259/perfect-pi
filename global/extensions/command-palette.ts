@@ -17,6 +17,7 @@ const MAIN_ITEMS: SelectItem[] = [
   { value: "thinking", label: "Thinking", description: "Set thinking level budget" },
   { value: "tools", label: "Tools", description: "Toggle active tools (/tools)" },
   { value: "settings", label: "Settings", description: "Open configuration & preferences" },
+  { value: "tmux-tickets", label: "Tmux tickets", description: "Observe parallel spec ticket sessions (/tmux-tickets)" },
 ];
 
 async function selectOption<T extends string>(
@@ -264,6 +265,12 @@ async function showPalette(pi: ExtensionAPI, ctx: ExtensionContext): Promise<voi
   // 10. Tools configuration (extension command)
   if (selected === "tools") {
     pi.sendUserMessage("/tools", { expandPromptTemplates: true });
+    return;
+  }
+
+  // 11. Tmux ticket supervisor
+  if (selected === "tmux-tickets") {
+    pi.sendUserMessage("/tmux-tickets status", { expandPromptTemplates: true });
     return;
   }
 }

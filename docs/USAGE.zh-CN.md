@@ -262,11 +262,82 @@ Pi 会：
 3. 创建 integration branch。
 4. 为 frontier ticket 写入 claim 状态。
 5. 为每个 ticket 创建独立 Git worktree。
-6. 使用 blocking `subagent` 的 `tasks` 数组并行执行独立 ticket。
+6. 使用 blocking `subagent`（内置快速无头模式）或 **Tmux 多会话并行分发与实时观测**。
 7. 在 integration branch 检查、合并和验证。
 8. 只有集成验证成功后才写 `Execution: complete`。
 9. 对最终 committed diff 执行 code review。
 10. 只清理已经合并且验证成功的 worktree。
+
+### 4.7 使用 tmux 进行多会话并行分发与实时观测
+
+当需要对多个 ticket 进行直观的可视化监控、随时交互审查运行过程时，可以使用 tmux 观测与分发体系：
+
+#### 自动分发与会话开启
+
+通过扩展命令或 CLI 启动：
+
+```bash
+# 自动检测当前前沿 ticket、创建 worktree、开启 tmux session 并分发任务
+node scripts/tmux-tickets.mjs dispatch --feature team-invites --wait
+```
+
+或者在 Pi 会话内：
+- 使用工具 `tmux_tickets` (`action: "dispatch", feature: "team-invites", wait: true`)
+- 或在命令面板（`Ctrl+Shift+P`）选择 `Tmux tickets`
+
+Supervisor 会执行：
+1. 自动计算 `.scratch/<feature>/issues/` 中所有无依赖阻塞的 `open` ticket；
+2. 为每个 ticket 建立分支与独立 Git worktree（`../<repo>-<NN>-<slug>`）；
+3. 建立专用 tmux 会话 `pi-spec-<feature>`；
+4. **窗口 0 (dashboard)**：启动彩色 ASCII 实时观测看板；
+5. **窗口 1..N (worker)**：在对应的 worktree 中分别拉起一个独立的 Pi session（严格执行 `cpa/gemini-3.8-flash-high:high` 安全模型策略）；
+6. 每个窗口独立运行测试并生成提交，日志持久化在 `.scratch/<feature>/runs/<run-id>/<NN>/worker.log`；
+7. 运行完成后保留窗口便于用户翻阅终端日志，并向父级返回验证的 commit SHA。
+
+#### 观测机制与界面
+
+随时接入 tmux 会话查看直观看板与各代理执行过程：
+
+```bash
+tmux attach -t pi-spec-team-invites
+```
+
+**看板界面示例**：
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ PERFECT PI TMUX TICKET DASHBOARD                                            │
+│ Session: pi-spec-team-invites  Branch: feat/invites  Spec: spec.md          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Status: 1 Running | 1 Succeeded | 0 Failed | Total: 2                       │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ ID  Title                     Status        Elapsed   Commit     Window     │
+│ 01  Setup invite model        [SUCCEEDED]   42s       a1b2c3d    Win 1      │
+│ 02  Invite email notifications[RUNNING]     15s       ......     Win 2      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Recent Activity (Live Tail):                                                │
+│   [02] Running test suite: test/email.test.ts (2 passed)                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Tmux Controls:                                                              │
+│   [Ctrl-b n] Next Window  |  [Ctrl-b p] Prev Window  |  [Ctrl-b <N>] Jump   │
+│   [Ctrl-b d] Detach tmux  |  Press q here to quit dashboard                 │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 状态查询与生命周期命令
+
+```text
+/tmux-tickets status team-invites       # 查看当前或最近一次运行的 tickets 状态
+/tmux-tickets frontier team-invites     # 查看当前满足前沿条件的准备就绪 ticket
+/tmux-tickets kill team-invites         # 结束当前特性的 tmux 会话
+```
+
+CLI 等效命令：
+
+```bash
+node scripts/tmux-tickets.mjs status --feature team-invites
+node scripts/tmux-tickets.mjs frontier --feature team-invites
+node scripts/tmux-tickets.mjs kill --feature team-invites
+```
 
 Pi 的 `subagent` 是阻塞调用。只有 `research` 是真正的后台研究；实现工作不会伪装成 detached background job。
 

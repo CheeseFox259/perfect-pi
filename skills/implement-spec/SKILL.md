@@ -30,6 +30,9 @@ Read this before dispatching anything. Upstream's language ("run in the backgrou
 - **Worktrees**: Pi has no automatic per-subagent worktree. Create them yourself with `git worktree add` before dispatching, and pass each subagent its own `cwd`.
 - **Skills**: there is no "Skill tool". A subagent is told its task in prose; when it needs a skill it reads `~/.pi/agent/skills/<name>/SKILL.md` itself. Use the managed `implementer` role for implementation (`~/.pi/agent/agents/implementer.md`); do not dispatch an unrelated reviewer/research role. This role does not pin a model, so it inherits the parent's provider/model and thinking level. For explicitly pinned experiments, pass the same `model` and `thinkingOverride` in the subagent call and verify the returned model/usage.
 - **Model policy**: the managed `subagent-policy` extension blocks unapproved `input.model` overrides before execution. By default, children receive `cpa/gemini-3.8-flash-high` and `high` thinking. A user can explicitly authorize a different model for the current session with `/subagent-model allow provider/model`; the model itself cannot grant that authorization. Do not bypass this policy by spawning Pi through bash.
+- **Parallel dispatch & observability modes**: You may execute frontier tickets using either:
+  1. *In-process subagent*: Single blocking `subagent` call with `tasks: [...]` (fast, headless).
+  2. *Tmux parallel sessions & dashboard*: Dispatch to isolated tmux windows via `tmux_tickets` tool or `node scripts/tmux-tickets.mjs dispatch --feature <feature> --wait`. This runs Window 0 as a live ANSI observability dashboard and separate windows per ticket running `cpa/gemini-3.8-flash-high:high`. The human can inspect live execution via `tmux attach -t pi-spec-<feature>` or run `/tmux-tickets status <feature>`.
 
 ## Steps
 
@@ -47,7 +50,10 @@ Read this before dispatching anything. Upstream's language ("run in the backgrou
 
    If worktree creation fails, release the claim with a diagnostic. Never dispatch two agents against the same ticket.
 
-5. Dispatch one `implementer` per independent frontier ticket in a single blocking `subagent` call with `tasks: [...]` and each task's worktree as `cwd`. Pass pointers to the spec and ticket (now present in the worktree), the testing decision and the blockers' verified commits. Instruct the agent to stay in its worktree, commit only its implementation, run relevant checks, and report its commit, acceptance results and blockers; it must not edit tracker state or other worktrees.
+5. Dispatch implementers for the independent frontier tickets using either:
+   - **In-process subagent**: a single blocking `subagent` call with `tasks: [...]` and each task's worktree as `cwd`. Pass pointers to the spec and ticket, the testing decision, and blockers' verified commits.
+   - **Tmux parallel sessions**: use the `tmux_tickets` tool (`action: "dispatch", wait: true`) or execute `node scripts/tmux-tickets.mjs dispatch --feature <feature> --wait`. The tmux supervisor creates worktrees, launches Window 0 dashboard and individual ticket windows, tracks live status, and returns the verified commit SHAs upon completion.
+   In either mode, instruct the agent to stay in its worktree, commit only its implementation, run relevant checks, and report its commit, acceptance results and blockers; it must not edit tracker state or other worktrees.
 
 6. For each result, run relevant checks on the ticket branch, then merge into the integration branch and run the integration checks. Do not merge known-failing work or claim a ticket is complete because its agent returned. After a successful merge and verification, set `Execution: complete`, clear `Claimed by` and `Branch` to `none`, and record `Verified commit: <merged-code-sha>`; commit the tracker update. A blocker unlocks only at this point. If implementation or validation fails, retain the worktree and branch; set `Execution: open`, clear the current claim and branch, and record `Last attempt: <run-id>, <branch>, <worktree>, <reason>` on the integration branch. On the next run inspect that attempt before reassigning it. If a merge is in progress or has conflicts, resolve or abort it before recording failure; never leave an ambiguous integration state.
 
