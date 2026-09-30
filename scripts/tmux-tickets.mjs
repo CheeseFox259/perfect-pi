@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
-import { execFileSync, execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 
 export function findFeatureTickets(repoRoot, feature) {
   const issuesDir = join(repoRoot, ".scratch", feature, "issues");
@@ -65,7 +65,7 @@ export function computeFrontier(tickets) {
 
 export function isTmuxAvailable() {
   try {
-    execSync("which tmux", { stdio: "ignore" });
+    execFileSync("tmux", ["-V"], { stdio: "ignore" });
     return true;
   } catch {
     return false;
@@ -74,7 +74,7 @@ export function isTmuxAvailable() {
 
 export function hasTmuxSession(sessionName) {
   try {
-    execSync(`tmux has-session -t "${sessionName}" 2>/dev/null`, { stdio: "ignore" });
+    execFileSync("tmux", ["has-session", "-t", sessionName], { stdio: "ignore" });
     return true;
   } catch {
     return false;
@@ -84,7 +84,7 @@ export function hasTmuxSession(sessionName) {
 export function killTmuxSession(sessionName) {
   if (hasTmuxSession(sessionName)) {
     try {
-      execSync(`tmux kill-session -t "${sessionName}"`, { stdio: "ignore" });
+      execFileSync("tmux", ["kill-session", "-t", sessionName], { stdio: "ignore" });
       return true;
     } catch {
       return false;
@@ -214,24 +214,37 @@ export async function dispatchFrontier({
   }
 
   // 1. Start tmux session with window 0: dashboard
-  const dashboardCmd = `node "${dashboardScript}" --run-dir "${runDir}" --spec "${specPath}" --session-name "${sName}" --integration-branch "${integrationBranch}"`;
-  execSync(`tmux new-session -d -s "${sName}" -n "dashboard" '${dashboardCmd.replace(/'/g, "'\\''")}'`);
+  execFileSync("tmux", [
+    "new-session", "-d", "-s", sName, "-n", "dashboard",
+    "node", dashboardScript,
+    "--run-dir", runDir,
+    "--spec", specPath,
+    "--session-name", sName,
+    "--integration-branch", integrationBranch,
+  ]);
 
   // 2. Add each ticket worker as a window
   for (let i = 0; i < dispatched.length; i++) {
     const item = dispatched[i];
     const winName = `${item.ticket.id}-${item.ticket.slug.slice(0, 15)}`;
-    let workerCmd = `node "${workerScript}" --ticket "${item.ticket.path}" --spec "${specPath}" --worktree "${item.worktreePath}" --run-dir "${item.ticketRunDir}" --model "${model}" --thinking "${thinking}" --run-id "${runId}"`;
-    if (mockExit !== null) workerCmd += ` --mock-exit ${mockExit}`;
-    if (mockCommit) workerCmd += ` --mock-commit "${mockCommit}"`;
-
-    execSync(
-      `tmux new-window -t "${sName}" -n "${winName}" -c "${item.worktreePath}" '${workerCmd.replace(/'/g, "'\\''")}'`
-    );
+    const workerArgs = [
+      "new-window", "-t", sName, "-n", winName, "-c", item.worktreePath,
+      "node", workerScript,
+      "--ticket", item.ticket.path,
+      "--spec", specPath,
+      "--worktree", item.worktreePath,
+      "--run-dir", item.ticketRunDir,
+      "--model", model,
+      "--thinking", thinking,
+      "--run-id", runId,
+    ];
+    if (mockExit !== null) workerArgs.push("--mock-exit", String(mockExit));
+    if (mockCommit) workerArgs.push("--mock-commit", mockCommit);
+    execFileSync("tmux", workerArgs);
   }
 
   // Select dashboard window
-  execSync(`tmux select-window -t "${sName}:0"`);
+  execFileSync("tmux", ["select-window", "-t", `${sName}:0`]);
 
   const result = {
     success: true,
@@ -465,7 +478,7 @@ Options:
       console.error(`Session '${sName}' is not running.`);
       process.exit(1);
     }
-    execSync(`tmux attach -t "${sName}"`, { stdio: "inherit" });
+    execFileSync("tmux", ["attach", "-t", sName], { stdio: "inherit" });
     return;
   }
 

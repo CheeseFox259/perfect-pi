@@ -141,7 +141,8 @@ async function main() {
     const implementerRole = join(process.env.HOME || "", ".pi/agent/agents/implementer.md");
     const piArgs = [
       "-p",
-      "--model", `${args.model}:${args.thinking}`,
+      "--model", args.model,
+      "--thinking", args.thinking,
     ];
     if (existsSync(implementerRole)) {
       piArgs.push("--append-system-prompt", implementerRole);
@@ -189,9 +190,21 @@ async function main() {
     } catch {}
   }
 
+  let hasUncommittedChanges = false;
+  if (!commitSha) {
+    try {
+      const porcelain = execFileSync("git", ["status", "--porcelain"], { cwd: worktree, encoding: "utf8" }).trim();
+      hasUncommittedChanges = porcelain.length > 0;
+    } catch {}
+  }
+
   const succeeded = exitCode === 0 && (Boolean(commitSha) || args.mockExit === 0);
   const status = succeeded ? "SUCCEEDED" : "FAILED";
-  const error = succeeded ? null : `Process exited with code ${exitCode}${commitSha ? "" : " (no commit produced)"}`;
+  const error = succeeded ? null : exitCode !== 0
+    ? `Process exited with code ${exitCode}`
+    : hasUncommittedChanges
+      ? "No commit produced (uncommitted changes left in worktree)"
+      : "No commit produced (no changes detected)";
 
   updateStatus(statusFile, {
     status,

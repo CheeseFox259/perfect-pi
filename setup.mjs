@@ -89,6 +89,7 @@ async function managedResourceMap() {
   await add(join(root, "global", "agents"), "agents");
   await add(join(root, "global", "prompts"), "prompts");
   await add(join(root, "global", "extensions"), "extensions");
+  await add(join(root, "scripts"), "scripts");
   await add(join(root, "skills"), "skills");
   return map;
 }
