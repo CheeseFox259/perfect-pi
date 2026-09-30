@@ -174,7 +174,27 @@
     "implementer": {
       "type": "custom",
       "localPath": "global/agents/implementer.md",
-      "description": "Worktree-scoped ticket implementer inheriting the parent model and thinking level"
+      "description": "Worktree-scoped ticket implementer governed by subagent-policy"
+    },
+    "reviewer": {
+      "type": "custom",
+      "localPath": "global/agents/reviewer.md",
+      "description": "Code review specialist pinned to default model cpa/gemini-3.8-flash-high"
+    },
+    "worker": {
+      "type": "custom",
+      "localPath": "global/agents/worker.md",
+      "description": "General-purpose subagent pinned to default model cpa/gemini-3.8-flash-high"
+    },
+    "planner": {
+      "type": "custom",
+      "localPath": "global/agents/planner.md",
+      "description": "Planning specialist pinned to default model cpa/gemini-3.8-flash-high"
+    },
+    "scout": {
+      "type": "custom",
+      "localPath": "global/agents/scout.md",
+      "description": "Recon scout pinned to default model cpa/gemini-3.8-flash-high"
     }
   },
   "extensions": {
@@ -197,6 +217,11 @@
       "type": "custom",
       "localPath": "global/extensions/tools.ts",
       "description": "Interactive tool toggle manager"
+    },
+    "subagent-policy": {
+      "type": "custom",
+      "localPath": "global/extensions/subagent-policy.ts",
+      "description": "Enforce a session-scoped model allowlist and default thinking level for subagent and research children"
     },
     "structured-output": {
       "type": "custom",

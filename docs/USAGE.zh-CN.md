@@ -386,7 +386,41 @@ Not applicable
 - capability 启用后，下一次模型请求才能稳定看到新增 tool schema。
 - 浏览器运行时要求 `agent-browser` 在 `PATH` 中。
 
-## 8. Research、浏览器和开发服务器
+## 8. Subagent 模型控制
+
+Perfect Pi 在 `subagent` 和 `research` 工具执行前检查模型：
+
+- 默认模型：`cpa/gemini-3.8-flash-high`
+- 默认 thinking：`high`
+- 不带模型参数时，不继承父会话的昂贵模型，而是注入默认模型。
+- 模型请求不在 allowlist 时会被阻止；模型不能自行授权。
+- 用户可以在当前会话明确授权：
+
+```text
+/subagent-model allow hikari/gpt-6-astra
+```
+
+查看当前策略：
+
+```text
+/subagent-model
+```
+
+撤销一个授权：
+
+```text
+/subagent-model revoke hikari/gpt-6-astra
+```
+
+恢复默认状态：
+
+```text
+/subagent-model reset
+```
+
+授权只作用于当前 Pi 会话。它不会写入 provider credentials，也不会修改全局模型默认值。若想让子代理使用另一个模型，应由用户先执行授权命令，再让 Pi 重试被阻止的调用。
+
+## 9. Research、浏览器和开发服务器
 
 ### Web research
 

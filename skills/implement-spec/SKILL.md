@@ -29,7 +29,7 @@ Read this before dispatching anything. Upstream's language ("run in the backgrou
 - **Background work**: only the `research` tool is genuinely background (an in-process second session that writes findings to a file). Use it for exploration notes; never for implementation.
 - **Worktrees**: Pi has no automatic per-subagent worktree. Create them yourself with `git worktree add` before dispatching, and pass each subagent its own `cwd`.
 - **Skills**: there is no "Skill tool". A subagent is told its task in prose; when it needs a skill it reads `~/.pi/agent/skills/<name>/SKILL.md` itself. Use the managed `implementer` role for implementation (`~/.pi/agent/agents/implementer.md`); do not dispatch an unrelated reviewer/research role. This role does not pin a model, so it inherits the parent's provider/model and thinking level. For explicitly pinned experiments, pass the same `model` and `thinkingOverride` in the subagent call and verify the returned model/usage.
-- **PR hosting**: `gh` may be absent or unauthenticated. Treat the PR as *optional* — see step 3.
+- **Model policy**: the managed `subagent-policy` extension blocks unapproved `input.model` overrides before execution. By default, children receive `cpa/gemini-3.8-flash-high` and `high` thinking. A user can explicitly authorize a different model for the current session with `/subagent-model allow provider/model`; the model itself cannot grant that authorization. Do not bypass this policy by spawning Pi through bash.
 
 ## Steps
 

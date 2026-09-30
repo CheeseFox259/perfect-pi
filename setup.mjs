@@ -295,7 +295,10 @@ async function sync({ dryRun = false, skipPackageInstall = false, skipSkillInsta
   }
   const adoptable = (target) => {
     const parts = target.split(sep);
-    return adoptOverrides && parts[0] === "skills" && components.skills?.[parts[1]]?.type === "override";
+    if (!adoptOverrides) return false;
+    if (parts[0] === "skills" && components.skills?.[parts[1]]?.type === "override") return true;
+    if (parts[0] === "agents" && components.agents?.[parts[1]?.replace(/\.md$/, "")]?.type === "custom") return true;
+    return false;
   };
   const refused = unclaimed.filter((target) => !adoptable(target));
   if (refused.length > 0) {
