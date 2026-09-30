@@ -1,7 +1,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { DynamicBorder, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { Container, SelectList, Text, type SelectItem } from "@earendil-works/pi-tui";
 
 /**
  * Model policy for child Pi sessions. The default is intentionally explicit:
@@ -80,6 +81,38 @@ function policyStatus(approved: Set<string>, defaultModel: string): string {
   return `default=${defaultModel}; allowlist=${[...ALLOWED_SUBAGENT_MODELS].join(", ")}; session approvals=${approvedText}`;
 }
 
+async function selectOption<T extends string>(
+  ctx: ExtensionContext,
+  title: string,
+  subtitle: string,
+  items: SelectItem[],
+): Promise<T | null> {
+  if (!ctx.ui?.custom) return null;
+  return ctx.ui.custom<T | null>((tui, theme, _kb, done) => {
+    const container = new Container();
+    container.addChild(new DynamicBorder((line) => theme.fg("accent", line)));
+    container.addChild(new Text(theme.fg("accent", theme.bold(title))));
+    if (subtitle) container.addChild(new Text(theme.fg("muted", subtitle)));
+    const list = new SelectList(items, Math.min(items.length, 12), {
+      selectedPrefix: (t) => theme.fg("accent", t),
+      selectedText: (t) => theme.fg("accent", t),
+      description: (t) => theme.fg("muted", t),
+      scrollInfo: (t) => theme.fg("dim", t),
+      noMatch: (t) => theme.fg("warning", t),
+    });
+    list.onSelect = (item) => done(item.value as T);
+    list.onCancel = () => done(null);
+    container.addChild(list);
+    container.addChild(new Text(theme.fg("dim", "↑↓ navigate · enter select · esc cancel")));
+    container.addChild(new DynamicBorder((line) => theme.fg("accent", line)));
+    return {
+      render: (w: number) => container.render(w),
+      invalidate: () => container.invalidate(),
+      handleInput: (d: string) => { list.handleInput(d); tui.requestRender(); },
+    };
+  });
+}
+
 export default function subagentPolicy(pi: ExtensionAPI): void {
   const approved = new Set<string>();
   let defaultModel = DEFAULT_SUBAGENT_MODEL;
@@ -87,22 +120,99 @@ export default function subagentPolicy(pi: ExtensionAPI): void {
   pi.registerCommand("subagent-model", {
     description: "Inspect or authorize the model policy for subagent and research children",
     handler: async (args, ctx) => {
-      const [action, model] = args.trim().split(/\s+/, 2);
-      if (!action) {
+      const trimmed = args.trim();
+      let action = "";
+      let model = "";
+
+      if (trimmed) {
+        // Text-based backward compatibility: /subagent-model allow provider/model
+        [action, model] = trimmed.split(/\s+/, 2);
+      } else if (ctx.mode === "tui" && ctx.ui?.custom) {
+        const items: SelectItem[] = [
+          { value: "status", label: "View current policy", description: policyStatus(approved, defaultModel) },
+          { value: "allow", label: "Allow a model", description: "Authorize a model for this session" },
+          ...(approved.size > 0 ? [{ value: "revoke", label: "Revoke a model", description: `${approved.size} model(s) currently approved` }] : []),
+          { value: "default", label: "Set default model", description: `Current: ${defaultModel}` },
+          { value: "reset", label: "Reset to defaults", description: "Clear all session overrides" },
+        ];
+        const chosen = await selectOption<string>(ctx, "Subagent Model Policy", policyStatus(approved, defaultModel), items);
+        if (!chosen) return;
+        action = chosen;
+      }
+
+      if (!action || action === "status") {
         ctx.ui.notify(policyStatus(approved, defaultModel), "info");
         return;
       }
-      if (action === "allow" && model) {
+
+      if (action === "allow") {
+        if (!model && ctx.mode === "tui" && ctx.ui?.custom) {
+          const registryModels: string[] = [];
+          try {
+            const available = (ctx as any).modelRegistry?.getAvailable?.() ?? [];
+            for (const m of available) {
+              const key = `${m.provider}/${m.id}`;
+              if (!modelAllowed(key, approved)) registryModels.push(key);
+            }
+          } catch {}
+          const items: SelectItem[] = [
+            ...registryModels.map((m) => ({ value: m, label: m })),
+            { value: "__custom__", label: "Type a model…", description: "Enter provider/model manually" },
+          ];
+          const chosen = await selectOption<string>(ctx, "Allow Model", "Select a model to authorize", items);
+          if (!chosen) return;
+          if (chosen === "__custom__") {
+            const input = await ctx.ui.input?.("Allow Model", "Enter provider/model (e.g. hikari/gpt-6-astra)");
+            if (!input?.trim()) return;
+            model = input.trim();
+          } else {
+            model = chosen;
+          }
+        }
+        if (!model) {
+          ctx.ui.notify("Usage: /subagent-model allow provider/model", "warning");
+          return;
+        }
         approved.add(model);
         ctx.ui.notify(`Authorized ${model} for this session's subagent calls.`, "info");
         return;
       }
-      if (action === "revoke" && model) {
+
+      if (action === "revoke") {
+        if (!model && ctx.mode === "tui" && ctx.ui?.custom) {
+          if (approved.size === 0) {
+            ctx.ui.notify("No models currently approved to revoke.", "warning");
+            return;
+          }
+          const items: SelectItem[] = [...approved].map((m) => ({ value: m, label: m }));
+          const chosen = await selectOption<string>(ctx, "Revoke Model", "Select a model to revoke", items);
+          if (!chosen) return;
+          model = chosen;
+        }
+        if (!model) {
+          ctx.ui.notify("Usage: /subagent-model revoke provider/model", "warning");
+          return;
+        }
         approved.delete(model);
         ctx.ui.notify(`Revoked session authorization for ${model}.`, "info");
         return;
       }
-      if (action === "default" && model) {
+
+      if (action === "default") {
+        if (!model && ctx.mode === "tui" && ctx.ui?.custom) {
+          const allowedModels = [...new Set([...ALLOWED_SUBAGENT_MODELS, ...approved])];
+          const items: SelectItem[] = allowedModels.map((m) => ({
+            value: m,
+            label: m + (m === defaultModel ? " (current)" : ""),
+          }));
+          const chosen = await selectOption<string>(ctx, "Set Default Model", "Choose default model for child sessions", items);
+          if (!chosen) return;
+          model = chosen;
+        }
+        if (!model) {
+          ctx.ui.notify("Usage: /subagent-model default provider/model", "warning");
+          return;
+        }
         if (!modelAllowed(model, approved)) {
           ctx.ui.notify(`Refusing default ${model}. Authorize it first with /subagent-model allow ${model}.`, "error");
           return;
@@ -111,12 +221,14 @@ export default function subagentPolicy(pi: ExtensionAPI): void {
         ctx.ui.notify(`Default child model set to ${model} for this session.`, "info");
         return;
       }
+
       if (action === "reset") {
         approved.clear();
         defaultModel = DEFAULT_SUBAGENT_MODEL;
         ctx.ui.notify("Subagent model policy reset for this session.", "info");
         return;
       }
+
       ctx.ui.notify(
         "Usage: /subagent-model | /subagent-model allow provider/model | /subagent-model revoke provider/model | /subagent-model default provider/model | /subagent-model reset",
         "warning",
