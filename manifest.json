@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "piVersion": "0.99.1",
+  "piVersion": "1.0.0",
   "skillInstaller": "skills@1.7.0",
   "managedSettings": {
     "theme": "cc-dark",
@@ -14,7 +14,7 @@
     "enableSkillCommands": true
   },
   "packages": [
-    {"source": "npm:pi-web-access@0.31.0", "capabilities": ["research", "fetch"]},
+    {"source": "npm:pi-web-access@0.33.0", "capabilities": ["research", "fetch"]},
     {"source": "npm:pi-matt-subagent@0.5.3", "capabilities": ["parallel-agents", "background-research", "review"]},
     {"source": "npm:pi-agent-browser-native@0.8.1", "capabilities": ["browser-verification"]},
     {"source": "npm:@narumitw/pi-lsp@0.49.8", "capabilities": ["diagnostics", "source-fixes"]},
@@ -37,14 +37,14 @@
       "ask-matt", "claude-handoff", "code-review", "codebase-design",
       "git-guardrails-claude-code", "grill-me", "grill-with-docs", "grilling",
       "handoff", "implement", "implement-spec", "improve-codebase-architecture",
-      "loop-me", "prototype", "research", "retro", "setup-matt-pocock-skills",
+      "loop-me", "prototype", "research", "resolving-merge-conflicts", "retro", "setup-matt-pocock-skills",
       "setup-ts-deep-modules", "skill-creator", "tdd", "teach", "to-questionnaire",
       "to-spec", "to-tickets", "triage", "wayfinder", "web-design-guidelines",
       "writing-beats", "writing-for-agents", "writing-fragments", "writing-shape"
     ]
   },
   "skills": [
-    {"source": "mattpocock/skills", "ref": "c55ee46073ed923f86ce59a5eb3b6d895095d1b7", "selection": "all", "requiredSkills": ["ask-matt", "code-review", "codebase-design", "diagnosing-bugs", "domain-modeling", "grill-with-docs", "implement", "improve-codebase-architecture", "prototype", "research", "resolving-merge-conflicts", "setup-matt-pocock-skills", "tdd", "to-spec", "to-tickets", "triage", "wayfinder", "wizard", "grill-me", "grilling", "handoff", "teach", "to-questionnaire", "wait-what", "writing-for-agents", "claude-handoff", "implement-spec", "loop-me", "pr", "retro", "setup-ts-deep-modules", "writing-beats", "writing-fragments", "writing-shape", "git-guardrails-claude-code", "migrate-to-shoehorn", "scaffold-exercises", "setup-pre-commit"], "scope": "global"},
+    {"source": "mattpocock/skills", "ref": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60", "selection": "all", "requiredSkills": ["ask-matt", "code-review", "codebase-design", "diagnosing-bugs", "domain-modeling", "grill-with-docs", "implement", "improve-codebase-architecture", "prototype", "research", "resolving-merge-conflicts", "setup-matt-pocock-skills", "tdd", "to-spec", "to-tickets", "triage", "wayfinder", "wizard", "grill-me", "grilling", "handoff", "teach", "to-questionnaire", "wait-what", "writing-for-agents", "claude-handoff", "implement-spec", "loop-me", "pr", "retro", "setup-ts-deep-modules", "writing-beats", "writing-fragments", "writing-shape", "git-guardrails-claude-code", "migrate-to-shoehorn", "scaffold-exercises", "setup-pre-commit"], "scope": "global"},
     {"source": "anthropics/skills", "ref": "8a1541c4a3ffa5a20a5a91de0dcf3f0bab1d1ef4", "selection": ["frontend-design", "skill-creator"], "scope": "global", "status": "skill-creator uses the local Pi evaluation override"},
     {"source": "vercel-labs/agent-skills", "ref": "063bee94c3f4df8453406c830b0a7df0f2860278", "selection": ["vercel-react-best-practices", "web-design-guidelines"], "scope": "global"},
     {"source": "local:route", "scope": "local"},

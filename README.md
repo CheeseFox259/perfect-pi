@@ -14,7 +14,7 @@ node setup.mjs
 node doctor.mjs
 ```
 
-Package install can be skipped for isolated configuration tests with `--skip-package-install`; Skill install can be skipped with `--skip-skill-install`. Skipped installs retain the last known source ref. Doctor reports absent dependencies/Skills as `MISSING` and changed or unknown source pins as `DRIFTED`.
+Package install can be skipped for isolated configuration tests with `--skip-package-install`; Skill install can be skipped with `--skip-skill-install`. Skipped installs retain the last known source ref. Doctor reports absent dependencies/Skills as `MISSING` and changed or unknown source pins as `DRIFTED`. `manifest.json` also pins the host runtime in `piVersion`; doctor compares it with the installed `@earendil-works/pi-coding-agent` and reports `pi runtime` as `SYNCED`, `DRIFTED`, or `MISSING`, so a Pi upgrade surfaces as a version-contract change instead of silent drift. `PI_GLOBAL_NODE_MODULES` adds explicit search roots when Pi lives outside the standard global `node_modules`.
 
 For an intentional migration of existing physical upstream skill files, use `--adopt-overrides` (first with `--dry-run`). Only registered override files are eligible; their previous contents are backed up under `~/.pi/agent/.perfect-pi-backups/` before ownership is recorded. Unrelated resources and user-owned symlinks remain protected. Materializing an upstream symlink preserves its companion references without modifying the shared upstream directory.
 
@@ -68,12 +68,12 @@ node route-smoke.mjs /tmp/route-results.json
 
 ## Capabilities
 
-- Pi-adapted Matt Skills provide the engineering workflow. The managed inventory is 42 upstream skills (31 local adaptations, 11 portable unchanged) plus 4 Pi-native skills. See [the compatibility inventory](docs/skill-audit-remaining.md); `node skill-audit.mjs` checks coverage, lineage, visibility and known incompatible invocation patterns.
+- Pi-adapted Matt Skills provide the engineering workflow. The managed inventory is 42 upstream skills (32 local adaptations, 10 portable unchanged) plus 4 Pi-native skills. See [the compatibility inventory](docs/skill-audit-remaining.md); `node skill-audit.mjs` checks coverage, lineage, visibility and known incompatible invocation patterns.
 - New sessions start with core tools and `subagent`. The compact `capabilities` tool enables `web`, `browser`, `mcp`, `lsp`, `process`, or `research` on demand. `/tools` remains the manual selector. Session selections persist, and explicit CLI allow/deny lists remain authoritative for this loader.
 - Subagent model policy is enforced before tool execution. By default, `subagent` and `research` children use `cpa/gemini-3.8-flash-high` with thinking `high`; models outside the allowlist are blocked. A user can explicitly authorize one for the current session with `/subagent-model allow provider/model`, then revoke it with `/subagent-model revoke provider/model` or reset with `/subagent-model reset`. The model cannot authorize itself.
 - Spec ticket parallel execution with tmux: `scripts/tmux-tickets.mjs` and the `tmux_tickets` tool provide parallel multi-session dispatch for ticket graphs. Independent frontier tickets run in separate tmux windows inside isolated git worktrees with a live ANSI observability dashboard in Window 0, real-time log streaming, and status tracking.
 - `pi-matt-subagent` provides blocking parallel agents and background research; Perfect Pi adds a model-inheriting `implementer` role for ticket worktrees.
-- `pi-web-access` and `pi-mcp-adapter` provide web and external-system access.
+- `pi-web-access` provides web research and fetch; external-system access comes from the built-in `mcp` extension and the configured MCP servers, reached after the `mcp` capability group is enabled.
 - `pi-agent-browser-native` exposes browser verification after enabling the `browser` capability, with additional advanced tools loaded through its native loader. Install upstream `agent-browser` separately and keep it on `PATH`.
 - LSP, managed processes, deterministic guardrails, and `pi-cc-extensions` support verification and UX.
 

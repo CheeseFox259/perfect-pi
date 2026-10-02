@@ -4,7 +4,7 @@ Perfect Pi 是一套运行在 Pi 上的全栈工程工作流配置。它把需�
 
 本文按日常使用顺序编写。默认假设：
 
-- 已安装 Pi `0.87.1` 或兼容版本。
+- 已安装 Pi `1.0.0`（与 `manifest.json` 中的 `piVersion` 一致）。
 - 当前仓库是 `/Users/superhacker/perfect-pi`，实际使用时替换为你的路径。
 - Node.js、Git 和 Pi 已在 `PATH` 中。
 
@@ -569,6 +569,8 @@ node reconcile.mjs 3way-test grilling --upstream-ref <commit> --offline
 node doctor.mjs
 node doctor.mjs --json
 ```
+
+`doctor` 会把已安装的 Pi 运行时与 `manifest.json` 的 `piVersion` 比对，输出 `pi runtime` 一行。升级 Pi 后若该行报 `DRIFTED`，只需把 `piVersion` 更新到新版本；报 `MISSING` 则表示在已搜索的全局 `node_modules` 中找不到 Pi（可用 `PI_GLOBAL_NODE_MODULES` 指定额外路径）。
 
 检查 skill 覆盖和 Pi 兼容性：
 

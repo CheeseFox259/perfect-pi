@@ -6,6 +6,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
+const { detectPiRuntime } = await import("./setup.mjs");
+
 const root = dirname(fileURLToPath(import.meta.url));
 
 // Exercise the CLI in a self-contained repository; PATH cannot reach a real installer.
@@ -60,24 +62,45 @@ for (const name of names) {
 }
 `);
   chmodSync(join(bin, "npx"), 0o755);
-  const runFile = (file, args) => spawnSync(process.execPath, [join(repo, file), ...args], {
+  const runFile = (file, args, extraEnv = {}) => spawnSync(process.execPath, [join(repo, file), ...args], {
     cwd: repo,
     encoding: "utf8",
-    env: { HOME: home, PI_CODING_AGENT_DIR: agentDir, PATH: bin },
+    env: { HOME: home, PI_CODING_AGENT_DIR: agentDir, PATH: bin, ...extraEnv },
   });
   const run = (...args) => runFile("setup.mjs", ["--skip-package-install", ...args]);
   const statePath = join(agentDir, ".perfect-pi-state.json");
   const state = () => JSON.parse(readFileSync(statePath, "utf8"));
-  const doctor = () => {
-    const result = runFile("doctor.mjs", ["--json"]);
+  const doctor = (extraEnv) => {
+    const result = runFile("doctor.mjs", ["--json"], extraEnv);
     assert.ok(result.stdout, result.stderr);
     return JSON.parse(result.stdout);
   };
   const calls = () => existsSync(join(home, "installer-calls.jsonl"))
     ? readFileSync(join(home, "installer-calls.jsonl"), "utf8").trim().split("\n").map(line => JSON.parse(line))
     : [];
-  return { home, repo, agentDir, shared, manifest, put, json, run, statePath, state, doctor, calls };
+  return { home, repo, agentDir, shared, manifest, put, json, run, runFile, statePath, state, doctor, calls };
 }
+
+test("the pinned Pi runtime is compared with the installed runtime", async (t) => {
+  const f = installFixture(t);
+  const modules = join(f.home, "fake-global", "node_modules");
+  const piDir = join(modules, "@earendil-works", "pi-coding-agent");
+  f.put(join(piDir, "package.json"), `${JSON.stringify({ name: "@earendil-works/pi-coding-agent", version: "0.99.1" })}\n`);
+  assert.deepEqual(await detectPiRuntime([modules]), { version: "0.99.1", root: modules });
+  assert.equal(await detectPiRuntime([]), null);
+  f.put(join(piDir, "package.json"), `${JSON.stringify({ name: "@earendil-works/pi-coding-agent", version: "1.0.0" })}\n`);
+  const env = { PI_GLOBAL_NODE_MODULES: modules };
+  assert.equal("pi runtime" in f.doctor(env).statuses, false, "an unpinned manifest has no runtime contract to check");
+  f.manifest.piVersion = "1.0.0";
+  f.json(join(f.repo, "manifest.json"), f.manifest);
+  assert.equal(f.doctor(env).statuses["pi runtime"].status, "SYNCED");
+  f.manifest.piVersion = "0.99.1";
+  f.json(join(f.repo, "manifest.json"), f.manifest);
+  assert.equal(f.doctor(env).statuses["pi runtime"].status, "DRIFTED");
+  const synced = f.runFile("setup.mjs", ["--skip-package-install"], env);
+  assert.equal(synced.status, 0, synced.stderr);
+  assert.match(synced.stdout, /PI RUNTIME DRIFTED: 1\.0\.0 installed; manifest pins 0\.99\.1/);
+});
 
 test("skipping a source update retains the installed pin and a normal dry-run retries it", (t) => {
   const f = installFixture(t);

@@ -19,6 +19,33 @@ const readJson = async (path, fallback = {}) => {
 
 const packageSources = (manifest) => manifest.packages.map((pkg) => typeof pkg === "string" ? pkg : pkg.source);
 
+const piRuntimePackage = "@earendil-works/pi-coding-agent";
+
+// The host runtime is not a managed resource, so its version is read from the
+// installed package rather than from the ownership registry. PI_GLOBAL_NODE_MODULES
+// lets non-standard layouts and tests point the search at explicit roots.
+export function piRuntimeRoots() {
+  const roots = (process.env.PI_GLOBAL_NODE_MODULES ?? "").split(process.platform === "win32" ? ";" : ":").filter(Boolean);
+  const prefix = dirname(dirname(process.execPath));
+  roots.push(
+    join(prefix, "lib", "node_modules"),
+    join(prefix, "node_modules"),
+    "/opt/homebrew/lib/node_modules",
+    "/usr/local/lib/node_modules",
+    "/usr/lib/node_modules",
+  );
+  if (process.platform === "win32" && process.env.APPDATA) roots.push(join(process.env.APPDATA, "npm", "node_modules"));
+  return [...new Set(roots.map((candidate) => resolve(candidate)))];
+}
+
+export async function detectPiRuntime(roots = piRuntimeRoots()) {
+  for (const root of roots) {
+    const manifest = await readJson(join(root, ...piRuntimePackage.split("/"), "package.json"), null).catch(() => null);
+    if (manifest?.version) return { version: manifest.version, root };
+  }
+  return null;
+}
+
 function expectedSkillNames(manifest) {
   const requiredMatt = manifest.skills.find((skill) => skill.source === "mattpocock/skills")?.requiredSkills ?? [];
   return (manifest.skills ?? []).flatMap((entry) => {
@@ -376,6 +403,13 @@ export async function inspect() {
   if (!existsSync(join(agentDir, "AGENTS.md"))) mark("AGENTS.md", "MISSING");
   else mark("AGENTS.md", (await readFile(join(agentDir, "AGENTS.md",), "utf8")) === await readFile(join(root, "global", "AGENTS.md"), "utf8") ? "SYNCED" : "DRIFTED");
 
+  // manifest.piVersion is the contract with the host runtime; without it there is nothing to check.
+  if (manifest.piVersion) {
+    const runtime = await detectPiRuntime();
+    mark("pi runtime", !runtime ? "MISSING" : runtime.version === manifest.piVersion ? "SYNCED" : "DRIFTED",
+      runtime ? `${runtime.version} installed; manifest pins ${manifest.piVersion}` : `manifest pins ${manifest.piVersion}; no ${piRuntimePackage} found in ${piRuntimeRoots().join(", ")}`);
+  }
+
   const managedSettings = manifest.managedSettings ?? {};
   const liveManagedSettings = Object.fromEntries(Object.keys(managedSettings).map((key) => [key, liveSettings[key]]));
   mark("settings", same(liveManagedSettings, managedSettings) ? "SYNCED" : "DRIFTED", "managed fields only");
@@ -451,6 +485,8 @@ async function main() {
     skipSkillInstall: args.has("--skip-skill-install"),
     adoptOverrides: args.has("--adopt-overrides"),
   });
+  const piStatus = (await inspect()).statuses["pi runtime"];
+  if (piStatus && piStatus.status !== "SYNCED") console.log(`PI RUNTIME ${piStatus.status}: ${piStatus.detail}`);
   if (!args.has("--dry-run")) {
     console.log(`Perfect Pi synced to ${agentDir}. Restart Pi or run /reload.`);
     console.log(`Managed packages: ${result.settings.next.packages.length}`);
