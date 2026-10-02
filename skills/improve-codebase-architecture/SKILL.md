@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 Surface architectural friction and propose **deepening opportunities**: refactors that turn shallow modules into deep ones. The aim is testability and AI-navigability.
 
-This skill uses the project's domain model and the `codebase-design` vocabulary: **module**, **interface**, **depth**, **seam**, **adapter**, **leverage**, and **locality**. Read the advertised `codebase-design` skill path (e.g. `~/.pi/agent/skills/codebase-design/SKILL.md` or `/skill:codebase-design`) before making suggestions. Read `CONTEXT.md` and relevant ADRs first.
+This skill uses the project's domain model and the `codebase-design` vocabulary: **module**, **interface**, **depth**, **seam**, **adapter**, **leverage**, and **locality**. Read the advertised `codebase-design` skill path (e.g. `~/.pi/agent/skills/codebase-design/SKILL.md` or `/skill:codebase-design`) before making suggestions. Read `GLOSSARY.md` and relevant ADRs first.
 
 ## Process
 

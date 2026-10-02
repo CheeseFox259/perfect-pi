@@ -1,6 +1,6 @@
 # Pi skill compatibility inventory
 
-Perfect Pi manages 46 distinct skills: 42 upstream skills and 4 native skills. Of the upstream skills, 31 have versioned local Pi adaptations and 11 retain portable upstream instructions. This inventory supersedes the initial partial audit; companion documents and executable helpers were included in the review.
+Perfect Pi manages 46 distinct skills: 42 upstream skills and 4 native skills. Of the upstream skills, 32 have versioned local Pi adaptations and 10 retain portable upstream instructions. This inventory supersedes the initial partial audit; companion documents and executable helpers were included in the review.
 
 Run `node skill-audit.mjs` to check that every managed skill is present, registered, visible, and free of known unsupported invocation patterns. This is a compatibility check, not proof that every workflow has completed against every external service. Pi's real resource loader was also checked: all 46 managed skills were discovered, with no name collisions (the process package supplies one additional skill).
 
@@ -24,6 +24,7 @@ Run `node skill-audit.mjs` to check that every managed skill is present, registe
 | prototype | Process-managed preview servers and browser verification; logic/UI companions preserved |
 | research | Native background research; `fetch_content`/browser sources and cited file results |
 | retro | Pi skill loading, session resources and AGENTS.md guidance |
+| resolving-merge-conflicts | Retired upstream in v1.3; kept verbatim as a local override because the harness still ships it and `ask-matt` points at it |
 | setup-matt-pocock-skills | Bundled tracker/domain templates and common execution ledger |
 | setup-ts-deep-modules | Pi skill loading and AGENTS.md pointers; dependency-cruiser template preserved |
 | skill-creator | Pi CLI evaluation, read-only trigger probes, no-tool description improvement, error-aware results, explicit model propagation |
@@ -44,14 +45,13 @@ Every adaptation is registered in `components.json` with its upstream `baseRef` 
 
 ## Portable upstream skills
 
-These 11 skills use repository conventions, language/framework guidance, ordinary commands, or artifact formats rather than another agent's APIs. They retain the pinned upstream files and companion resources:
+These 10 skills use repository conventions, language/framework guidance, ordinary commands, or artifact formats rather than another agent's APIs. They retain the pinned upstream files and companion resources:
 
 - diagnosing-bugs
 - domain-modeling
 - frontend-design
 - migrate-to-shoehorn
 - pr
-- resolving-merge-conflicts
 - scaffold-exercises
 - setup-pre-commit
 - vercel-react-best-practices

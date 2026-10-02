@@ -8,14 +8,14 @@ disable-model-invocation: true
 Perfect Pi local override of mattpocock/skills `implement-spec`.
 Upstream assumes Claude Code: background subagents, automatic per-agent
 worktrees, and a GitHub PR as the integration point. Pi differs on all three.
-Base ref: c55ee46073ed923f86ce59a5eb3b6d895095d1b7
+Base ref: d81f3a183412e71a5b1e84ca21bc1a35eea03a60
 -->
 
 You have been provided a spec. This spec should have tickets associated with it, describing how to implement the spec.
 
 Read `docs/agents/issue-tracker.md` before proceeding. If it is missing, tell the user to run `/skill:setup-matt-pocock-skills` and stop; do not guess where tickets live.
 
-The goal is an integrated branch implementing the spec. A draft PR is optional and requires explicit authorization.
+The goal is the entire spec implemented on a single **integration branch**, with every ticket resolved the way the issue tracker closes work. A draft PR is optional and requires explicit authorization.
 
 The tickets are not a list of steps. They are a **task graph** with blocking relationships between them. This means there is always a **frontier** of tickets which are ready to be grabbed.
 
@@ -40,7 +40,7 @@ Read this before dispatching anything. Upstream's language ("run in the backgrou
 
 2. (optional) Use an exploration subagent for required codebase or documentation research. Put shared markdown notes outside the repo and pass pointers to implementers, rather than repeating the findings in prompts.
 
-3. For a local tracker, first ensure the configuration, spec and approved tickets are committed on the current branch; do not start from untracked `.scratch/` files, which a new worktree cannot see. For a remote tracker, ensure the spec pointer and local ledger files (`.scratch/<feature>/issues/<NN>-<slug>.md`) exist and are committed on the current branch before creating worktrees; if ledgers are missing for an approved remote graph, materialize them first with `Remote: <ticket-URL>`, `Acceptance source: remote`, `Spec: <spec-URL>`, and 1-to-1 numbered issue IDs. Stage only those artifacts, inspect for secrets and unrelated changes, and ask before committing if the user has not authorized local commits. Then create the integration branch from that commit and record its starting commit as the code-review fixed point. If `gh` is authenticated, ask for explicit authorization before creating a draft PR or changing its review state. Otherwise the branch is the integration point; record pointers in a handoff file. Never let an unapproved PR block local implementation.
+3. For a local tracker, first ensure the configuration, spec and approved tickets are committed on the current branch; do not start from untracked `.scratch/` files, which a new worktree cannot see. For a remote tracker, ensure the spec pointer and local ledger files (`.scratch/<feature>/issues/<NN>-<slug>.md`) exist and are committed on the current branch before creating worktrees; if ledgers are missing for an approved remote graph, materialize them first with `Remote: <ticket-URL>`, `Acceptance source: remote`, `Spec: <spec-URL>`, and 1-to-1 numbered issue IDs. Stage only those artifacts, inspect for secrets and unrelated changes, and ask before committing if the user has not authorized local commits. Then create the integration branch from that commit and record its starting commit as the code-review fixed point. If `gh` is authenticated, ask for explicit authorization before creating a draft PR or changing its review state; open it only after the first verified merge, since a branch with no commits ahead of the base cannot open one. Otherwise the branch is the integration point; record pointers in a handoff file. Never let an unapproved PR block local implementation.
 
 4. At each frontier, check `Last attempt` for an existing branch/worktree and resume it when possible. Before dispatch, write `Execution: claimed`, `Claimed by: <run-id>` and `Branch: <ticket-branch>` for each ticket to the integration branch and commit that state. Create one worktree and branch per ticket from that claim commit:
 
@@ -53,7 +53,11 @@ Read this before dispatching anything. Upstream's language ("run in the backgrou
 5. Dispatch implementers for the independent frontier tickets using either:
    - **In-process subagent**: a single blocking `subagent` call with `tasks: [...]` and each task's worktree as `cwd`. Pass pointers to the spec and ticket, the testing decision, and blockers' verified commits.
    - **Tmux parallel sessions**: use the `tmux_tickets` tool (`action: "dispatch", wait: true`) or execute `node scripts/tmux-tickets.mjs dispatch --feature <feature> --wait`. The tmux supervisor creates worktrees, launches Window 0 dashboard and individual ticket windows, tracks live status, and returns the verified commit SHAs upon completion.
-   In either mode, instruct the agent to stay in its worktree, commit only its implementation, run relevant checks, and report its commit, acceptance results and blockers; it must not edit tracker state or other worktrees.
+   In either mode, instruct the agent to:
+   - confirm its worktree is based on the current integration branch tip before starting, and reset onto it if it drifted;
+   - build the ticket test-first, driving `/skill:tdd` (a subagent reads `~/.pi/agent/skills/tdd/SKILL.md` itself; there is no Skill tool in Pi);
+   - merge the integration branch tip into its own branch before reporting done, so its verification runs against current integration code;
+   - stay in its worktree, commit only its implementation, run relevant checks, and report its commit, acceptance results and blockers; it must not edit tracker state or other worktrees.
 
 6. For each result, run relevant checks on the ticket branch, then merge into the integration branch and run the integration checks. Do not merge known-failing work or claim a ticket is complete because its agent returned. After a successful merge and verification, set `Execution: complete`, clear `Claimed by` and `Branch` to `none`, and record `Verified commit: <merged-code-sha>`; commit the tracker update. A blocker unlocks only at this point. If implementation or validation fails, retain the worktree and branch; set `Execution: open`, clear the current claim and branch, and record `Last attempt: <run-id>, <branch>, <worktree>, <reason>` on the integration branch. On the next run inspect that attempt before reassigning it. If a merge is in progress or has conflicts, resolve or abort it before recording failure; never leave an ambiguous integration state.
 
@@ -61,7 +65,7 @@ Read this before dispatching anything. Upstream's language ("run in the backgrou
 
 8. Review committed integration changes against the recorded starting commit and the spec. The bundled `/skill:code-review` expects a fixed point and a committed diff; supply those and identify the spec explicitly. Fix findings with a single implementer, re-run checks and update the affected ticket evidence when needed. Do not call an empty diff a pass.
 
-9. If a draft PR exists and the user authorized the update, mark it ready; otherwise report the branch as ready for human review.
+9. If a draft PR exists and the user authorized the update, mark it ready; otherwise resolve each ticket the way the issue tracker closes work and report the integration branch as ready for human review.
 
 10. Remove only ticket worktrees whose changes have been merged and verified. Preserve failed worktrees and branches for recovery; never force-remove them.
 

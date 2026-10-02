@@ -16,7 +16,7 @@ Inspect, without editing:
 
 - `git remote -v` and `.git/config`.
 - Root `AGENTS.md` and `CLAUDE.md`, including any existing `## Agent skills` block.
-- `CONTEXT.md`, `CONTEXT-MAP.md`, `docs/adr/`, and `docs/agents/`.
+- `GLOSSARY.md`, `GLOSSARY-MAP.md`, `docs/adr/`, and `docs/agents/`.
 - `.scratch/`, monorepo markers, and the installed `triage` skill.
 
 Treat an existing tracker configuration, populated `.scratch/`, or domain layout as settled. Do not reopen it.
@@ -35,7 +35,7 @@ If `triage` is available, ask once whether to keep the canonical labels: `needs-
 
 ### Domain docs
 
-Use a single root `CONTEXT.md` and `docs/adr/` unless monorepo evidence calls for `CONTEXT-MAP.md` and context-specific documents.
+Use a single root `GLOSSARY.md` and `docs/adr/` unless monorepo evidence calls for `GLOSSARY-MAP.md` and context-specific documents.
 
 ## 3. Show the draft
 

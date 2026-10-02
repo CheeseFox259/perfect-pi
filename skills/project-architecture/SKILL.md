@@ -7,7 +7,7 @@ description: Load and apply a project's architecture, domain, ADR, schema, and A
 
 First locate the project's architecture sources. Common locations are:
 
-- `CONTEXT.md`
+- `GLOSSARY.md`
 - `docs/architecture/`
 - `docs/adr/`
 - `docs/agents/`

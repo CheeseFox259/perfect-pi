@@ -31,6 +31,7 @@ node reconcile.mjs status --json
 Read the JSON output:
 1. Check `upstreams`: Identify if any source has `status === "UPDATE_AVAILABLE"`.
 2. Check `overrides`: See which locally modified skills are linked to that upstream and what their `preservedFeatures` are.
+3. If `diff` or `3way-test` fails with `Path 'skills/<name>/SKILL.md' not found at ref`, the registry's `upstreamRelPath` is wrong, not the pin. Upstream nests every skill under a category directory (`skills/engineering/...`, `skills/productivity/...`, `skills/in-progress/...`, `skills/misc/...`); resolve the real path with `git ls-tree -r <ref> --name-only | grep '/<name>/SKILL.md'` and correct every override before trusting any merge result.
 
 ### Step 2: Report to the User
 
@@ -65,6 +66,7 @@ When an override is affected or when the user requests inspection:
    - Verify the merge exits with 0 conflicts and inspect the output to ensure local enhancements are fully preserved alongside upstream improvements.
    - Write the cleanly merged content to `<localPath>`.
    - **Maintain correct ref fields**: Update `manifest.json` at `skills[].ref` for the source and `components.json` at `upstreams[source].pinnedRef`. Advance a reconciled override's `baseRef` only after merging and verifying all its changed companion files as well as `SKILL.md`. If Option B was chosen, leave the override's `baseRef` unchanged. Never add a `pinnedRef` field to the manifest.
+   - **Upstream deletes or moves a skill**: a moved skill keeps its content under a new path, so repoint `upstreamRelPath` at the head path before merging. A deleted skill leaves nothing to merge: either drop it from `manifest.json` `requiredSkills`, its cross-references and the inventory doc, or keep the capability by copying the last upstream file into `skills/<name>/SKILL.md` and registering it as an `override` whose `baseRef` stays at the last commit that carried the file, with a `description` saying upstream retired it. A merge that conflicts only on Pi command spelling or execution semantics is expected; resolve it toward the local adaptation and confirm every upstream change survives in adapted form.
    - Run `node setup.mjs --skip-package-install` to sync to `~/.pi/agent`.
    - Run `node doctor.mjs`, the repository tests, and the skill compatibility audit. Report the actual statuses; a clean merge alone does not validate runtime behavior.
 2. Commit the reviewed files only when local commits are covered by the user's authorization; preserve unrelated edits. Use a descriptive message (e.g. `chore(upstream): reconcile skills preserving Pi adaptations`).

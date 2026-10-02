@@ -25,7 +25,7 @@ In Pi, dispatch sub-agents using a single blocking `subagent` call with 3 or mor
 - Task 3: "Optimise for the most common caller: make the default case trivial."
 - Task 4 (if applicable): "Design around ports & adapters for cross-seam dependencies."
 
-Prompt each sub-agent with a separate technical brief (file paths, coupling details, dependency category from [DEEPENING.md](DEEPENING.md), what sits behind the seam). The brief is independent of the user-facing problem-space explanation in Step 1. Include both [SKILL.md](SKILL.md) vocabulary and `CONTEXT.md` vocabulary in the brief so each sub-agent names things consistently with the architecture language and the project's domain language. Each subagent reads skill and domain files directly using file tools; do not invoke a nonexistent `Skill` tool.
+Prompt each sub-agent with a separate technical brief (file paths, coupling details, dependency category from [DEEPENING.md](DEEPENING.md), what sits behind the seam). The brief is independent of the user-facing problem-space explanation in Step 1. Include both [SKILL.md](SKILL.md) vocabulary and `GLOSSARY.md` vocabulary in the brief so each sub-agent names things consistently with the architecture language and the project's domain language. Each subagent reads skill and domain files directly using file tools; do not invoke a nonexistent `Skill` tool.
 
 The `subagent` call in Pi is blocking: batch the prompts into one `tasks` array and receive all results together when execution completes.
 
