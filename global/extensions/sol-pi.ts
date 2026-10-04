@@ -375,14 +375,21 @@ export default async function solPiIntegration(pi: ExtensionAPI) {
 
     if (config.onlineContextCompact) {
       const compact = await load("extensions/online-context-compact/index.ts");
-      // Wrap turn_end for OCC so it respects Phase Contract before aborting turns
+      // Wrap turn_end for OCC: Phase Contract exclusively governs proactive/opportunistic
+      // compactions, suppressing OCC mid-phase in reasoning workflows and before deliverables exist.
       const occBridge = Object.create(scoped);
       occBridge.on = (name: string, handler: any) => {
         if (name === "turn_end") {
           return scoped.on("turn_end", (tEvent: any, tCtx: ExtensionContext) => {
-            if (activePhase && !activePhase.allowMidPhaseCompact) {
-              // Forbidden phase: suppress OCC boundary evaluation to prevent aborting active reasoning
-              return;
+            if (activePhase) {
+              if (!activePhase.allowMidPhaseCompact) {
+                // Suppress proactive OCC evaluation during forbidden reasoning phases
+                return;
+              }
+              if (activePhase.durabilityGate && !checkDurabilityGate(tCtx.cwd, activePhase.durabilityGate)) {
+                // Suppress proactive OCC until deliverables are persisted on disk
+                return;
+              }
             }
             return handler(tEvent, tCtx);
           });
@@ -392,54 +399,12 @@ export default async function solPiIntegration(pi: ExtensionAPI) {
       compact.registerOnlineContextCompact(occBridge, config.cacheWriteReadRatio);
     }
 
-    scoped.on("session_before_compact", (compactionEvent: any, cCtx: ExtensionContext) => {
-      // 1. Manual user command (/compact or palette): user is authoritative, never cancel
-      if (compactionEvent.reason === "manual") return;
-
-      // 2. Hard context overflow: absolute fail-safe window protection.
-      // Must NOT cancel, otherwise subsequent API requests fail with 400 context_length_exceeded and wedge the session.
-      if (compactionEvent.reason === "overflow") {
-        pi.appendEntry("perfect-pi-sol-emergency-compaction", {
-          phase: activePhase?.skill ?? "none",
-          reason: "context_window_overflow",
-          policy: activePhase?.policy ?? "default",
-        });
-        if (cCtx.mode === "tui") {
-          cCtx.ui.notify?.(
-            `⚠️ Emergency Compaction: context window full during ${activePhase?.skill ?? "session"}. Preserving session viability.`,
-            "warning",
-          );
-        }
-        return;
-      }
-
-      // 3. Soft threshold / proactive auto-compaction: enforce Phase Contract rules
-      if (activePhase) {
-        if (!activePhase.allowMidPhaseCompact) {
-          pi.appendEntry("perfect-pi-sol-compaction-veto", {
-            phase: activePhase.skill,
-            policy: activePhase.policy,
-            reason: activePhase.rationale,
-            compactionReason: compactionEvent.reason,
-          });
-          if (cCtx.mode === "tui") {
-            cCtx.ui.notify?.(`SoL Phase Contract: soft compaction vetoed during ${activePhase.skill} (${activePhase.rationale})`, "warning");
-          }
-          return { cancel: true };
-        }
-        if (activePhase.durabilityGate && !checkDurabilityGate(cCtx.cwd, activePhase.durabilityGate)) {
-          pi.appendEntry("perfect-pi-sol-compaction-veto", {
-            phase: activePhase.skill,
-            policy: activePhase.policy,
-            reason: "durability_gate_unmet",
-            compactionReason: compactionEvent.reason,
-          });
-          if (cCtx.mode === "tui") {
-            cCtx.ui.notify?.(`SoL Phase Contract: compaction vetoed (deliverables not yet persisted to disk)`, "warning");
-          }
-          return { cancel: true };
-        }
-      }
+    scoped.on("session_before_compact", (_compactionEvent: any) => {
+      // Both "threshold" and "overflow" are necessary, normal context-pressure compactions
+      // triggered when the context window reaches its limit. They proceed directly without
+      // veto, warnings, or user decisions.
+      // Proactive compactions (OCC) are governed at the turn_end boundary above.
+      return;
     });
 
     scoped.on("session_compact", (compactEvent: any) => {

@@ -43,11 +43,11 @@ In Pi, the native `subagent` tool is blocking, returning only when its tasks com
 
 ## Runtime Contract Enforcement
 
-In Perfect Pi, these boundaries are not merely prose advice—they are formally declared in [`phase-contract.json`](phase-contract.json) and enforced by the harness adapter (`global/extensions/sol-pi.ts`):
+In Perfect Pi, these boundaries are formally declared in [`phase-contract.json`](phase-contract.json) and enforced by the harness adapter (`global/extensions/sol-pi.ts`):
 
-1. **Mid-Phase Protection (Fail-Closed):** When a skill such as `/skill:grill-me`, `/skill:tdd`, or `/skill:diagnosing-bugs` is active, the runtime intercepts automatic compaction requests (including upstream SoL-Pi Online Context Compact) and vetos them (`allowMidPhaseCompact: false`). The primary reasoning chain remains intact.
-2. **Durability Gate (Gate A):** Compaction after `/skill:to-spec` or `/skill:to-tickets` is permitted only after durable deliverables (e.g. `spec.md`, tickets under `.scratch/*/issues/`) are verified on disk.
-3. **Summary Enrichment:** When checkpoint compaction executes, the adapter injects phase-specific instructions into the summarizer prompt to retain architecture decisions and constraints rather than relying on generic summaries.
+1. **Proactive Compaction Governance:** The Phase Contract specifically manages proactive, opportunistic compactions (such as SoL-Pi Online Context Compact) before context is full. When a skill such as `/skill:grill-me`, `/skill:tdd`, or `/skill:diagnosing-bugs` is active, the adapter suppresses proactive OCC evaluation at turn boundaries (`allowMidPhaseCompact: false`), preventing early turn abortion and context loss.
+2. **Durability Gate (Gate A):** Proactive checkpoint compaction after `/skill:to-spec` or `/skill:to-tickets` is permitted only after durable deliverables (e.g. `spec.md`, tickets under `.scratch/*/issues/`) are verified on disk.
+3. **Context Capacity Compactions:** When the context window reaches capacity (Pi's native `threshold` or `overflow`), compaction is normal and necessary; it executes directly and silently without user interruption or warnings to keep the session alive.
 4. **Manual Authority:** The user can always manually issue `/compact` or use Ctrl+Shift+P (`SoL-Pi → Compact now`); manual user intent is never blocked by automatic gates.
 
 ## Primary and secondary sources

@@ -69,10 +69,9 @@ To try online compaction in a trusted project, set `onlineContextCompact` to tru
 
 The table and gates below are actively enforced by `global/extensions/sol-pi.ts` consuming the machine-readable contract [`skills/ask-matt/phase-contract.json`](../skills/ask-matt/phase-contract.json).
 
-Automatic compactions (from SoL-Pi OCC or background context pressure) are intercepted via Pi's `session_before_compact` event:
-- **Mid-phase compactions** in reasoning skills (`grilling`, `tdd`, `diagnosing-bugs`) are **vetoed** (`cancel: true`).
-- **Durability Gate (Gate A)** ensures deliverables (spec or tickets) exist on disk before checkpoint compaction is permitted.
-- **Manual `/compact`** commands from the user or the Ctrl+Shift+P palette are **never vetoed** (user authority is preserved).
+- **Proactive / Economic Compaction (OCC)**: Governed at turn boundaries. When reasoning skills (`grilling`, `tdd`, `diagnosing-bugs`) are active or durability deliverables are not yet on disk, OCC evaluation is suppressed, preventing premature turn abortion and context loss.
+- **Context Capacity Compactions (`threshold` and `overflow`)**: Normal, necessary compactions triggered when context limits are reached. They execute directly and silently without veto, warning, or user interruption.
+- **Manual `/compact`**: Commands from the user or the Ctrl+Shift+P palette execute immediately under user authority.
 
 Perfect Pi adopts a **Workflow-Aware Compaction** model that unites Matt Pocock's phase structure with SoL-Pi's economic cost model:
 
