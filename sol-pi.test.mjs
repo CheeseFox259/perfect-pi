@@ -265,3 +265,16 @@ test("upstream fork fixes: verified by contract check on patched SoL-Pi", async 
   assert.equal(result.actualRef, "93fd67a833da1b6236cf2582f02f7a6454d6d941");
   assert.ok(result.verifiedExports.includes("extensions/online-context-compact/index.ts:buildCompactionInstructions"));
 });
+test("runtime phase tracking records phase transitions for skill commands", async (t) => {
+  const f = await scenario(t, {
+    responses: [
+      fauxAssistantMessage("ready"),
+      fauxAssistantMessage("complete"),
+    ],
+  });
+  await f.session.prompt("/skill:grill-me stress-test plan", { expandPromptTemplates: false });
+  const transitions = f.manager.getEntries().filter((e) => e.type === "custom" && e.customType === "perfect-pi-phase-transition");
+  assert.equal(transitions.length, 1);
+  assert.equal(transitions[0].data.phase, "grill-me");
+  assert.equal(transitions[0].data.policy, "forbidden");
+});
