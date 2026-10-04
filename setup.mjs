@@ -122,6 +122,7 @@ async function managedResourceMap() {
   await add(join(root, "global", "AGENTS.md"), "AGENTS.md");
   await add(join(root, "global", "sol-pi.json"), "sol-pi.json");
   await add(join(root, "docs", "sol-pi.md"), "docs/sol-pi.md");
+  await add(join(root, "manifest.json"), "manifest.json");
   await add(join(root, "global", "agents"), "agents");
   await add(join(root, "global", "prompts"), "prompts");
   await add(join(root, "global", "extensions"), "extensions");
@@ -405,6 +406,28 @@ async function sync({ dryRun = false, skipPackageInstall = false, skipSkillInsta
   return { manifest, resourceMap, settings, skippedPackageInstall: skipPackageInstall };
 }
 
+/**
+ * Resolve the manifest reference for a given upstream source name.
+ * Checks manifest.skills, manifest.solPi, and manifest.packages.
+ * Shared by reconcile.mjs and skill-audit.mjs to avoid duplicated logic.
+ */
+export function resolveManifestRef(manifest, sourceName) {
+  let ref = (manifest.skills || []).find((s) => s.source === sourceName)?.ref || null;
+  if (!ref && manifest.solPi && (sourceName === "NVlabs/SoL-Pi" || sourceName === "SoL-Pi")) {
+    ref = manifest.solPi.pinnedRef || (manifest.solPi.source?.split("@")[1] || null);
+  }
+  if (!ref && manifest.packages) {
+    for (const pkg of manifest.packages) {
+      const src = typeof pkg === "string" ? pkg : pkg.source;
+      if (src && (src.includes(sourceName) || (sourceName.includes("/") && src.includes(sourceName.split("/")[1]))) && src.includes("@")) {
+        ref = src.split("@").pop();
+        break;
+      }
+    }
+  }
+  return ref;
+}
+
 export async function inspect() {
   const manifest = await readJson(manifestPath);
   const components = await readJson(componentsPath, {});
@@ -498,8 +521,59 @@ export async function inspect() {
     mark("SoL-Pi config", !existsSync(target) ? "MISSING" : synced ? "SYNCED" : "DRIFTED",
       config ? `${target}; fusion=${config.actionFusion}; observations=${config.observationPack}; reducer=${config.evidencePreservingReducer}; compact=${config.onlineContextCompact}${existsSync(projectConfig) ? `; trusted project may override via ${projectConfig}` : ""}` : "invalid or missing JSON");
   }
+
+  let solPiReport = null;
+  const solPiPkg = (manifest.packages ?? []).find((p) => {
+    const s = typeof p === "string" ? p : p?.source;
+    return s && s.includes("SoL-Pi");
+  });
+  if (solPiPkg || manifest.solPi) {
+    const source = manifest.solPi?.source || (typeof solPiPkg === "string" ? solPiPkg : solPiPkg?.source);
+    const pinnedRef = manifest.solPi?.pinnedRef || source?.match(/@([a-f0-9]{40})$/)?.[1] || "e1a586af0ad8956f42ae5b26bba20e48fbf30e00";
+    const installed = await installedPackageMatches(source);
+    const livePkg = liveSettings.packages?.find((p) => (typeof p === "string" ? p : p?.source) === source);
+    const upstreamEntryDisabled = Boolean(livePkg && typeof livePkg === "object" && Array.isArray(livePkg.extensions) && livePkg.extensions.length === 0);
+    const adapterPath = join(agentDir, "extensions", "sol-pi.ts");
+    const adapterLoaded = existsSync(adapterPath);
+    const configPath = join(agentDir, "sol-pi.json");
+    const parsedConfig = existsSync(configPath) ? await readJson(configPath, null).catch(() => null) : null;
+    const policy = manifest.solPi?.reducerPolicy ?? { provider: "cpa", model: "gemini-3.8-flash-high", maxRequestsPerSession: 20 };
+    const authorizedRoute = `${policy.provider}/${policy.model}`;
+    const configuredRoute = parsedConfig ? `${parsedConfig.evidencePreservingReducerProvider}/${parsedConfig.evidencePreservingReducerModel}` : null;
+    const reducerAuthorized = parsedConfig?.evidencePreservingReducer ? (configuredRoute === authorizedRoute) : true;
+
+    const modelsPath = join(agentDir, "models.json");
+    const modelsJson = existsSync(modelsPath) ? await readJson(modelsPath, null).catch(() => null) : null;
+    const enabledModels = Array.isArray(liveSettings.enabledModels) ? liveSettings.enabledModels : [];
+    const modelConfigured = Boolean(
+      (modelsJson?.providers?.[policy.provider]?.models?.some((m) => m.id === policy.model)) ||
+      enabledModels.includes(authorizedRoute)
+    );
+
+    let contractVerified = false;
+    try {
+      const { checkSolPiContract } = await import("./scripts/check-sol-pi-contract.mjs");
+      const contract = await checkSolPiContract({ root, agentDir });
+      contractVerified = contract.ok;
+    } catch {}
+
+    solPiReport = {
+      "source pin": installed ? `OK (${pinnedRef.slice(0, 12)})` : `DRIFTED (expected ${pinnedRef.slice(0, 12)})`,
+      "package installed": installed ? "OK" : "MISSING",
+      "upstream entry disabled": upstreamEntryDisabled ? "OK (extensions: [])" : "DRIFTED",
+      "adapter loaded": adapterLoaded ? "OK" : "MISSING",
+      "config parsed": parsedConfig ? "OK" : "MISSING",
+      "action fusion": parsedConfig?.actionFusion ? "ENABLED" : "DISABLED",
+      "observation pack": parsedConfig?.observationPack ? "ENABLED" : "DISABLED",
+      "reducer route": reducerAuthorized ? `AUTHORIZED (${authorizedRoute}, max ${policy.maxRequestsPerSession}/session)` : `UNAUTHORIZED (${configuredRoute})`,
+      "reducer model": modelConfigured ? "AVAILABLE" : "UNCONFIGURED",
+      "online compact": parsedConfig?.onlineContextCompact ? "ENABLED" : "DISABLED",
+      "Pi compatibility": contractVerified ? "VERIFIED" : "DRIFTED",
+    };
+  }
+
   const ok = Object.values(statuses).every(({ status }) => status === "SYNCED");
-  return { ok, agentDir, source: root, statuses, liveSettings, desiredPackages, desiredPatterns };
+  return { ok, agentDir, source: root, statuses, liveSettings, desiredPackages, desiredPatterns, solPi: solPiReport };
 }
 
 async function main() {

@@ -10,6 +10,12 @@ if (json) {
   for (const [name, item] of Object.entries(report.statuses)) {
     console.log(`${item.status.padEnd(8)} ${name}${item.detail ? ` (${item.detail})` : ""}`);
   }
+  if (report.solPi) {
+    console.log("SoL-Pi");
+    for (const [key, val] of Object.entries(report.solPi)) {
+      console.log(`  ${key.padEnd(25)} ${val}`);
+    }
+  }
   console.log(`Source: ${report.source}`);
   console.log(`Live:   ${report.agentDir}`);
 }

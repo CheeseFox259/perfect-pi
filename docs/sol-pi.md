@@ -4,16 +4,19 @@ Perfect Pi runs on Pi 1.0.2. It installs NVlabs/SoL-Pi at commit `e1a586af0ad895
 
 ## Current Profile
 
-The managed source is `global/sol-pi.json`, synchronized to `~/.pi/agent/sol-pi.json`.
+The managed source is `global/sol-pi.json`, synchronized to `~/.pi/agent/sol-pi.json`. System runtime policy is owned by `manifest.json:solPi` (single source of truth), ensuring that `sol-pi.json` cannot select an unauthorized or unbudgeted route.
 
 | Feature | Default | Integration |
 | --- | --- | --- |
 | Action Fusion | Enabled | edit/write accept optional `then_run`; commands execute through Pi's guarded nested bash pipeline |
 | ObservationPack | Enabled | Large successful text results become handles after two full sends; `obs_recall` returns exact pages |
-| Evidence-Preserving Reducer | Enabled with user authorization | Eligible diagnostic logs may be sent to `cpa/gemini-3.8-flash-high`; exact evidence is checked and usage is included in tool results |
-| Online Context Compact | Disabled | Available through trusted project configuration; preserves Pi's native compaction implementation |
+| Evidence-Preserving Reducer | Enabled with **session consent** | Authorized route locked to `manifest.json:solPi.reducerPolicy`; first use prompts the user via TUI confirm (or pre-authorize from Ctrl+Shift+P → SoL-Pi → Authorize reducer); consent does NOT inherit to subagents or new sessions; capped at 20 reqs/session |
+| Online Context Compact | Disabled | Project opt-in via `sol-pi.json`; when enabled, uses upstream SoL-Pi's economic model with `update_plan` step boundaries. Workflow-Aware Compaction (below) describes the preferred architecture for phase-boundary triggers when Matt Pocock skills are active |
 
-Run `/sol-pi` to see the effective configuration path, feature flags, pinned source, and approved reducer route. Run `node doctor.mjs` to verify the managed package HEAD, resource filter, configuration and runtime version.
+Run `/sol-pi` to see the effective configuration path, feature flags, pinned source, and approved reducer route.
+Run `node doctor.mjs` to verify the managed package HEAD, contract compatibility, reducer model availability, and runtime versions.
+Run `node scripts/check-sol-pi-contract.mjs` to audit the 7 required modules and 11 exported function signatures against upstream.
+Run `node observe.mjs <session.jsonl> --summary` to generate the SoL efficiency and token avoidance report.
 
 ## Guarded Fusion
 
@@ -53,6 +56,56 @@ A trusted project's `.pi/sol-pi.json` replaces the global file; values are not m
 To try online compaction in a trusted project, set `onlineContextCompact` to true. The ratio is a fixed economic-policy input, not a price guarantee. Keep it aligned with the provider's billing conditions before interpreting savings. Perfect Pi's `keepRecentTokens: 20000` matches the upstream standalone estimate.
 
 `update_plan` is session-local execution progress; it is not the issue tracker and does not change triage roles, claims, or verified ticket completion. Keep step IDs stable and register unfinished steps before completing them. Use it during execution, not to force compaction during unresolved grilling or spec/ticket authoring.
+
+## Workflow-Aware Compaction (Design — Not Yet Enforced in Code)
+
+> **Implementation status**: The table and gates below describe the _target architecture_.
+> Today, enabling `onlineContextCompact` delegates directly to upstream SoL-Pi's OCC
+> with its economic model and `update_plan` step boundaries. The Matt-skill phase
+> boundary enforcement (Gates A–C, per-skill compaction policy) is a future integration
+> that requires hooking Pi's `turn_end` / `agent_before_settle` with skill phase state.
+> Until then, leave `onlineContextCompact: false` (default) and rely on Pi's native
+> compaction plus manual `/compact` from the Ctrl+Shift+P palette.
+
+Perfect Pi adopts a **Workflow-Aware Compaction** model that unites Matt Pocock's phase structure with SoL-Pi's economic cost model:
+
+$$\text{Compaction} = \text{SafePhaseBoundary (Matt Skill)} \land \text{EconomicBenefit (SoL Cost Model)}$$
+
+$$\text{Ticket Execution} = \text{Fresh Context (Ticket + Spec + Repo Rehydration)}$$
+
+### Phase Boundary Policy Matrix
+
+| Workflow / Skill | Mid-Workflow Compaction | Completion Boundary | Runtime Behavior |
+|---|---|---|---|
+| `grill-me` / `grill-with-docs` | **Forbidden** | Optional | Preserve continuous reasoning across exploring and stress-testing |
+| `to-spec` | **Forbidden** | Eligible | Conversation rationale compiled into persistent `SPEC.md` anchor (`CHECKPOINT_COMPACT`) |
+| `to-tickets` | **Forbidden** | **Strong Boundary** | Spec decomposed into vertical slices; context disposable (`RESET_ELIGIBLE`) |
+| `implement` | Inside ticket: cautious | **Hard Boundary** | Fresh context per ticket (`FRESH_CONTEXT`); rehydrate from ticket + spec + git commit |
+| `tdd` | Red-Green: **Forbidden** | Post-refactor | Keep failing test assumptions, hypotheses, and diagnostic traces intact |
+| `diagnosing-bugs` | Cautious | Checkpoint | Forbid until reproduction is verified; checkpoint once root-cause is isolated |
+| `code-review` | Within pass: **Forbidden** | Complete | Review pass stays intact; markdown report persists as durable artifact |
+
+### Three Context Operations
+
+1. **`SOFT_COMPACT`**: Retain the current session and compact conversational history. Appropriate during long exploratory grilling or debugging sessions when context exceeds token thresholds.
+2. **`CHECKPOINT_COMPACT`**: The phase produced a durable artifact (`SPEC.md`, `tickets.md`, `research.md`). The artifact replaces loose chat rationale as the new context anchor.
+3. **`FRESH_CONTEXT`**: Recommended for `/implement`. Do not compact or summarize past implementation chat. Start a fresh context with the ticket, spec reference, blocking tickets, and latest git commits.
+
+### Three Compaction Gates
+
+Before triggering any compaction, three gates must be satisfied:
+
+- **Gate A (Durability Gate)**: Have the phase's deliverables been written to disk and verified? (Spec written, tickets recorded, commit created). If not, **fail-closed** (keep context).
+- **Gate B (Semantic Dependency Gate)**: Does the next step require raw conversational history, or can it operate strictly from the durable artifact? If raw history is required, compaction is withheld.
+- **Gate C (Economic Gate)**: Does SoL-Pi's cost model indicate that $\text{ExpectedTokensSaved} > \text{CacheRewriteCost}$? If rewriting cache is uneconomic, keep context intact.
+
+### Externalize First, Summarize Second
+
+Context is the active working set; it is not long-term memory. Summaries generated by LLMs are lossy and must never become the primary source of truth. The source of truth is always externalized:
+- Logs $\to$ `ObservationPack` (`obs://...`)
+- Design $\to$ `SPEC.md`
+- Tasks $\to$ Ticket graph
+- Code changes $\to$ Git commits and test suites
 
 ## Verification
 

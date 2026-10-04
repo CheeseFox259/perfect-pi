@@ -1,6 +1,32 @@
 #!/usr/bin/env node
 import { readFile } from "node:fs/promises";
-import { estimateTokens } from "/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent/dist/index.js";
+import { existsSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { join } from "node:path";
+import { homedir } from "node:os";
+
+// Resolve Pi runtime portably (same logic as check-sol-pi-contract.mjs)
+function findPiEntry() {
+  const candidates = [
+    join(homedir(), ".pi", "agent", "@earendil-works", "pi-coding-agent"),
+    // npm global root (works on Linux, macOS, Windows)
+    (() => { try { return join(execFileSync("npm", ["root", "--global"], { encoding: "utf8" }).trim(), "@earendil-works", "pi-coding-agent"); } catch { return null; } })(),
+  ].filter(Boolean);
+  for (const dir of candidates) {
+    const entry = join(dir, "dist", "index.js");
+    if (existsSync(entry)) return entry;
+  }
+  return null;
+}
+const piEntry = findPiEntry();
+let estimateTokens;
+if (piEntry) {
+  const pi = await import(piEntry);
+  estimateTokens = pi.estimateTokens;
+} else {
+  // Fallback: rough estimate (~4 chars per token)
+  estimateTokens = (msg) => Math.ceil((typeof msg === "string" ? msg.length : (msg.content?.length ?? 0)) / 4);
+}
 
 const path = process.argv[2];
 if (!path) throw new Error("Usage: node observe.mjs <pi-jsonl-session-or-json-events>");
@@ -84,4 +110,133 @@ const report = {
   skillsLoaded: [...new Set(skillNames)],
   toolCalls: { total: toolEvents.length, byCategory: toolCounts },
 };
-console.log(JSON.stringify(report, null, 2));
+
+// --- SoL-Pi Telemetry & Efficiency Calculation ---
+// Event names aligned with what sol-pi.ts actually emits:
+//   perfect-pi-sol-action-fusion   → from registerSafeFusion
+//   perfect-pi-sol-observation-recall → from obs_recall wrapper
+//   perfect-pi-sol-reducer-call     → from registerAccountedReducer
+//   perfect-pi-sol-reducer-receipt   → from registerAccountedReducer
+//   perfect-pi-sol-reducer-fallback  → from registerAccountedReducer
+// Upstream SoL-Pi ObservationPack does NOT emit custom entries for archival;
+// we count archived observations by scanning for obs_XXX placeholder patterns.
+const customEntries = records
+  .filter((r) => r.type === "custom" && typeof r.customType === "string" && r.customType.startsWith("perfect-pi-sol-"))
+  .map((r) => ({ type: r.customType, data: r.data ?? {} }));
+
+const fusionEntries = customEntries.filter((e) => e.type === "perfect-pi-sol-action-fusion");
+let fusedCount = fusionEntries.length;
+let savedTurns = fusionEntries.filter((e) => e.data.succeeded).reduce((s, e) => s + (e.data.turnsSaved ?? 1), 0);
+
+if (fusedCount === 0) {
+  for (const msg of messages) {
+    if (msg.message?.role === "toolResult") {
+      const txt = Array.isArray(msg.message.content)
+        ? msg.message.content.map((p) => p.text ?? "").join("\n")
+        : String(msg.message.content ?? "");
+      if (txt.includes("[then_run:succeeded]")) {
+        fusedCount += 1;
+        savedTurns += 1;
+      } else if (txt.includes("[then_run:failed]")) {
+        fusedCount += 1;
+      }
+    }
+  }
+}
+
+// Observation archival: scan session records for obs_XXX placeholder patterns
+// since upstream ObservationPack writes to its own ledger, not session custom entries.
+const obsRecallEntries = customEntries.filter((e) => e.type === "perfect-pi-sol-observation-recall");
+const seenObsIds = new Set();
+let obsBytesArchived = 0;
+for (const rec of records) {
+  const txt = JSON.stringify(rec);
+  // Match placeholder patterns: "id: obs_XXXX" or "obs_recall id=obs_XXXX"
+  for (const match of txt.matchAll(/obs_([a-f0-9]{24})/g)) {
+    seenObsIds.add(`obs_${match[1]}`);
+  }
+  // Estimate archived bytes from placeholder metadata ("original_bytes: NNN")
+  for (const sizeMatch of txt.matchAll(/original_bytes:\s*(\d+)/g)) {
+    obsBytesArchived += Number(sizeMatch[1]);
+  }
+}
+const obsArchived = seenObsIds.size;
+const obsRecallCount = obsRecallEntries.length + (toolCounts.other?.obs_recall ?? 0);
+
+const reducerCallEntries = customEntries.filter((e) => e.type === "perfect-pi-sol-reducer-call");
+const reducerReceiptEntries = customEntries.filter((e) => e.type === "perfect-pi-sol-reducer-receipt");
+const reducerFallbackEntries = customEntries.filter((e) => e.type === "perfect-pi-sol-reducer-fallback");
+
+const reducerRequests = reducerCallEntries.length;
+const reducerAccepted = reducerReceiptEntries.filter((e) => e.data.accepted !== false).length;
+const reducerRejected = reducerReceiptEntries.filter((e) => e.data.accepted === false).length;
+const reducerFallback = reducerFallbackEntries.length;
+const reducerInputTokens = reducerCallEntries.reduce((s, e) => s + (e.data.inputTokens ?? 0), 0);
+const reducerOutputTokens = reducerCallEntries.reduce((s, e) => s + (e.data.outputTokens ?? 0), 0);
+
+// Compaction: count Pi's native compaction events (the only real compaction that runs).
+// SoL-Pi online compaction is disabled by default; when enabled, upstream emits its own
+// session entries ("sol-pi-online-context-compact") — count those too.
+const nativeCompactions = records.filter((r) => r.type === "compaction").length;
+const solCompactions = records.filter((r) => r.type === "custom" && r.customType === "sol-pi-online-context-compact").length;
+const compactionTriggered = nativeCompactions + solCompactions;
+const compactionSkipped = records.filter((r) => r.type === "custom" && r.customType === "sol-pi-online-context-compact-skipped").length;
+
+report.sol = {
+  action_fusion: {
+    count: fusedCount,
+    saved_turns: savedTurns,
+  },
+  observation_pack: {
+    archived: obsArchived,
+    bytes_archived: obsBytesArchived,
+    recall_count: obsRecallCount,
+  },
+  reducer: {
+    requests: reducerRequests,
+    accepted: reducerAccepted,
+    rejected: reducerRejected,
+    fallback: reducerFallback,
+    input_tokens: reducerInputTokens,
+    output_tokens: reducerOutputTokens,
+  },
+  compaction: {
+    triggered: compactionTriggered,
+    skipped: compactionSkipped,
+  },
+};
+
+function formatBytes(bytes) {
+  if (!bytes || bytes === 0) return "0 B";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function renderSolSummary(rep) {
+  const s = rep.sol;
+  return [
+    "Perfect-Pi SoL Efficiency Report",
+    "--------------------------------",
+    `Model requests                ${rep.requests}`,
+    `Fused validations             ${s.action_fusion.count}`,
+    `Estimated turns avoided       ${s.action_fusion.saved_turns}`,
+    "",
+    `Observations archived         ${s.observation_pack.archived}`,
+    `Original bytes                ${formatBytes(s.observation_pack.bytes_archived)}`,
+    `Recall requests               ${s.observation_pack.recall_count}`,
+    "",
+    `Reducer requests              ${s.reducer.requests}`,
+    `Accepted receipts             ${s.reducer.accepted}`,
+    `Fallbacks                     ${s.reducer.fallback}`,
+    `Reducer tokens                ${(s.reducer.input_tokens + s.reducer.output_tokens).toLocaleString()}`,
+    "",
+    `Online compactions            ${s.compaction.triggered}`,
+  ].join("\n");
+}
+
+if (process.argv.includes("--summary") || process.argv.includes("--sol")) {
+  console.log(renderSolSummary(report));
+} else {
+  console.log(JSON.stringify(report, null, 2));
+}

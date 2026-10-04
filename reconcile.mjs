@@ -5,6 +5,7 @@ import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync, spawnSync } from "node:child_process";
+import { resolveManifestRef } from "./setup.mjs";
 
 const defaultRoot = dirname(fileURLToPath(import.meta.url));
 
@@ -386,8 +387,7 @@ export async function checkStatus(options = {}) {
 
   for (const [name, info] of Object.entries(components.upstreams || {})) {
     const pinnedRef = info.pinnedRef;
-    const manifestEntry = (manifest.skills || []).find((s) => s.source === name);
-    const manifestRef = manifestEntry?.ref || null;
+    let manifestRef = resolveManifestRef(manifest, name);
     const pinAligned = Boolean(manifestRef && pinnedRef && manifestRef === pinnedRef);
 
     if (!pinAligned) {

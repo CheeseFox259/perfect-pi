@@ -16,6 +16,13 @@
       "repo": "https://github.com/vercel-labs/agent-skills.git",
       "pinnedRef": "063bee94c3f4df8453406c830b0a7df0f2860278",
       "description": "Vercel web interface guidelines and React performance skills"
+    },
+    "NVlabs/SoL-Pi": {
+      "repo": "https://github.com/NVlabs/SoL-Pi.git",
+      "pinnedRef": "e1a586af0ad8956f42ae5b26bba20e48fbf30e00",
+      "integration": "adapter",
+      "compatibilityTarget": "pi-1.0.2",
+      "description": "NVIDIA SoL-Pi efficiency extension suite (fused validation, observations, reducer, online compaction)"
     }
   },
   "skills": {

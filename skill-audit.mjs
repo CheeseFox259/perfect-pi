@@ -3,6 +3,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveManifestRef } from "./setup.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 export function auditSkills(projectRoot = root, agentDir = process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent")) {
@@ -40,7 +41,8 @@ export function auditSkills(projectRoot = root, agentDir = process.env.PI_CODING
     results.push({ ...skill, status: component?.type === "override" ? "adapted" : component?.type === "custom" ? "native" : "portable", path });
   }
   for (const [source, upstream] of Object.entries(components.upstreams)) {
-    if (manifest.skills.find((entry) => entry.source === source)?.ref !== upstream.pinnedRef) errors.push(`${source}: manifest/registry pins disagree`);
+    const manifestRef = resolveManifestRef(manifest, source);
+    if (manifestRef !== upstream.pinnedRef) errors.push(`${source}: manifest/registry pins disagree`);
   }
   return { ok: errors.length === 0, counts: Object.fromEntries(["adapted", "portable", "native"].map((status) => [status, results.filter((r) => r.status === status).length])), skills: results, errors };
 }

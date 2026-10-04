@@ -83,6 +83,7 @@ const MAIN_ITEMS: SelectItem[] = [
   { value: "tools", label: "Tools", description: "Toggle active tools (/tools)" },
   { value: "settings", label: "Settings", description: "Open configuration & preferences" },
   { value: "tmux-tickets", label: "Tmux tickets", description: "Observe parallel spec ticket sessions (/tmux-tickets)" },
+  { value: "sol-pi", label: "SoL-Pi", description: "Inspect SoL-Pi status & authorize reducer (/sol-pi)" },
 ];
 
 async function selectOption<T extends string>(
@@ -394,6 +395,43 @@ async function showPalette(pi: ExtensionAPI, ctx: ExtensionContext): Promise<voi
   // 11. Tmux ticket supervisor (triggers interactive selection)
   if (selected === "tmux-tickets") {
     pi.sendUserMessage("/tmux-tickets", { expandPromptTemplates: true });
+    return;
+  }
+
+  // 12. SoL-Pi status & reducer authorization
+  if (selected === "sol-pi") {
+    const solItems: SelectItem[] = [
+      { value: "status", label: "Status", description: "Show current SoL-Pi features & config" },
+      { value: "authorize-reducer", label: "Authorize reducer", description: "Allow reducer to send logs to the approved route this session" },
+      { value: "compact", label: "Compact now", description: "Trigger context compaction (Pi native)" },
+    ];
+    const solChoice = await selectOption<string>(ctx, "SoL-Pi", "Efficiency extension controls", solItems);
+    if (!solChoice) return;
+    if (solChoice === "status") {
+      pi.sendUserMessage("/sol-pi", { expandPromptTemplates: true });
+      return;
+    }
+    if (solChoice === "authorize-reducer") {
+      // Import the consent helper from the adapter
+      try {
+        const { authorizeReducer, isReducerAuthorized } = await import("./sol-pi-consent.mjs");
+        const sessionId = ctx.sessionManager.getSessionId();
+        if (isReducerAuthorized(sessionId)) {
+          ctx.ui.notify?.("Reducer already authorized for this session", "info");
+        } else {
+          authorizeReducer(sessionId);
+          ctx.ui.notify?.("Reducer authorized for this session", "info");
+        }
+      } catch {
+        ctx.ui.notify?.("SoL-Pi adapter not loaded", "warning");
+      }
+      return;
+    }
+    if (solChoice === "compact") {
+      ctx.compact();
+      ctx.ui.notify?.("Compaction triggered", "info");
+      return;
+    }
     return;
   }
 }

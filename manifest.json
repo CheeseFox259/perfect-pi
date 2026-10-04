@@ -13,6 +13,15 @@
     },
     "enableSkillCommands": true
   },
+  "solPi": {
+    "source": "git:github.com/NVlabs/SoL-Pi@e1a586af0ad8956f42ae5b26bba20e48fbf30e00",
+    "pinnedRef": "e1a586af0ad8956f42ae5b26bba20e48fbf30e00",
+    "reducerPolicy": {
+      "provider": "cpa",
+      "model": "gemini-3.8-flash-high",
+      "maxRequestsPerSession": 20
+    }
+  },
   "packages": [
     {"source": "git:github.com/NVlabs/SoL-Pi@e1a586af0ad8956f42ae5b26bba20e48fbf30e00", "extensions": [], "capabilities": ["observation-pack", "action-fusion", "log-reducer", "online-compaction"]},
     {"source": "npm:pi-web-access@0.33.0", "capabilities": ["research", "fetch"]},

@@ -6,6 +6,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import test from "node:test";
 import { installedPackageMatches } from "./setup.mjs";
+import { checkSolPiContract } from "./scripts/check-sol-pi-contract.mjs";
+import { authorizeReducer } from "./global/extensions/sol-pi-consent.mjs";
 let piEntry;
 try { piEntry = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent")); }
 catch { piEntry = join(execFileSync("npm", ["root", "--global"], { encoding: "utf8" }).trim(), "@earendil-works/pi-coding-agent/dist/index.js"); }
@@ -62,9 +64,14 @@ async function scenario(t, { responses, denyBash = false, config = {}, tools, se
   const manager = SessionManager.create(cwd, join(cwd, "sessions"));
   ({ session } = await createAgentSession({ cwd, agentDir, tools, model: faux.getModel(), thinkingLevel: "off", resourceLoader: loader, sessionManager: manager, settingsManager }));
   const errors = [];
-  await session.bindExtensions({ onError: (error) => errors.push(String(error)) });
+  await session.bindExtensions({ onError: (error) => errors.push(error.error instanceof Error ? error.error.message : String(error.error ?? error)) });
+  // Pre-authorize reducer for test sessions that enable it, since test fixtures have no TUI confirm.
+  if (config?.evidencePreservingReducer) {
+    authorizeReducer(manager.getSessionId());
+  }
+  if (errors.length > 0) throw new Error(errors.join("; "));
   await session.prompt("Execute the fixture.", { expandPromptTemplates: false });
-  assert.deepEqual(errors, []);
+  if (errors.length > 0) throw new Error(errors.join("; "));
   const results = manager.getBranch().filter((entry) => entry.type === "message" && entry.message.role === "toolResult").map((entry) => entry.message);
   return { cwd, session, manager, results, bashCalls, faux, reducerCalls, loader, context: () => currentContext };
 }
@@ -75,6 +82,13 @@ const fusedResponses = (command, path = "sample.txt") => [
 
 test("SoL-Pi is installed at the managed commit", async () => {
   assert.equal(await installedPackageMatches(SOL_PI_SOURCE), true);
+});
+test("compatibility contract verifies all required modules and exports", async () => {
+  const result = await checkSolPiContract();
+  assert.equal(result.ok, true, result.errors.join("; "));
+  assert.ok(result.verifiedModules.includes("extensions/action-fusion/file-queue.ts"));
+  assert.ok(result.verifiedExports.includes("config.ts:loadSolPiConfig"));
+  assert.ok(result.verifiedExports.includes("extensions/observation-pack/index.ts:registerObservationPack"));
 });
 test("fusion invokes the guarded nested bash pipeline", async (t) => {
   const f = await scenario(t, { responses: fusedResponses("printf forbidden"), denyBash: true });
@@ -198,4 +212,38 @@ test("reducer request budget caps at 20 and subsequent logs pass through unchang
   assert.equal(f.reducerCalls, 20);
   assert.equal(textOf(f.results[20]), log);
   assert.equal(f.results[20].usage, undefined);
+});
+test("reducer rejects unauthorized route specified in project sol-pi.json", async (t) => {
+  await assert.rejects(async () => {
+    await scenario(t, {
+      responses: [fauxAssistantMessage("complete")],
+      config: {
+        evidencePreservingReducer: true,
+        evidencePreservingReducerProvider: "unauthorized-provider",
+        evidencePreservingReducerModel: "unauthorized-model",
+      },
+    });
+  }, /not authorized by manifest policy/);
+});
+test("telemetry entries are persisted for action fusion, recall, and reducer", async (t) => {
+  const f = await scenario(t, {
+    responses: [
+      fauxAssistantMessage(fauxToolCall("write", { path: "telemetry.txt", content: "hello\n", then_run: { command: "echo ok" } }), { stopReason: "toolUse" }),
+      fauxAssistantMessage("complete"),
+    ],
+  });
+  const fusionEntries = f.manager.getEntries().filter((e) => e.type === "custom" && e.customType === "perfect-pi-sol-action-fusion");
+  assert.equal(fusionEntries.length, 1);
+  assert.equal(fusionEntries[0].data.succeeded, true);
+  assert.equal(fusionEntries[0].data.turnsSaved, 1);
+});
+test("obs_recall throws unknown observation id for foreign or nonexistent handle", async (t) => {
+  const f = await scenario(t, {
+    responses: [
+      fauxAssistantMessage(fauxToolCall("obs_recall", { id: "obs_0123456789abcdef01234567" }), { stopReason: "toolUse" }),
+      fauxAssistantMessage("complete"),
+    ],
+  });
+  assert.equal(f.results[0].isError, true);
+  assert.match(textOf(f.results[0]), /Unknown observation id/);
 });
