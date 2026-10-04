@@ -83,6 +83,7 @@ const MAIN_ITEMS: SelectItem[] = [
   { value: "tools", label: "Tools", description: "Toggle active tools (/tools)" },
   { value: "settings", label: "Settings", description: "Open configuration & preferences" },
   { value: "tmux-tickets", label: "Tmux tickets", description: "Observe parallel spec ticket sessions (/tmux-tickets)" },
+  { value: "prototype", label: "Prototype", description: "Build UI or logic prototype (/skill:prototype)" },
   { value: "sol-pi", label: "SoL-Pi", description: "Inspect SoL-Pi status & authorize reducer (/sol-pi)" },
 ];
 
@@ -430,6 +431,44 @@ async function showPalette(pi: ExtensionAPI, ctx: ExtensionContext): Promise<voi
     if (solChoice === "compact") {
       ctx.compact();
       ctx.ui.notify?.("Compaction triggered", "info");
+      return;
+    }
+    return;
+  }
+
+  // 13. Prototype (UI variations, logic walkthrough, or clipboard mockup)
+  if (selected === "prototype") {
+    const protoItems: SelectItem[] = [
+      { value: "ui", label: "UI variants", description: "Build 3 radically different UI options with switcher" },
+      { value: "logic", label: "Logic walkthrough", description: "Build standalone HTML state demo" },
+      { value: "clipboard-mockup", label: "Paste mockup from clipboard", description: "Extract copied ChatGPT image to .scratch/mockup.png" },
+    ];
+    const protoChoice = await selectOption<string>(ctx, "Prototype", "Choose prototyping flow", protoItems);
+    if (!protoChoice) return;
+    if (protoChoice === "ui") {
+      let task = ctx.ui.getEditorText?.()?.trim() || "";
+      if (task) ctx.ui.setEditorText?.("");
+      pi.sendUserMessage(task ? `/skill:prototype ${task}` : "/skill:prototype What should this UI look like?", { expandPromptTemplates: true });
+      return;
+    }
+    if (protoChoice === "logic") {
+      let task = ctx.ui.getEditorText?.()?.trim() || "";
+      if (task) ctx.ui.setEditorText?.("");
+      pi.sendUserMessage(task ? `/skill:prototype ${task}` : "/skill:prototype Does this state model feel right?", { expandPromptTemplates: true });
+      return;
+    }
+    if (protoChoice === "clipboard-mockup") {
+      try {
+        const agentDir = process.env.PI_CODING_AGENT_DIR || join(process.env.HOME || "", ".pi", "agent");
+        const scriptPath = join(ctx.cwd, "scripts", "clipboard-image.mjs");
+        const fallbackScript = join(agentDir, "scripts", "clipboard-image.mjs");
+        const script = existsSync(scriptPath) ? scriptPath : fallbackScript;
+        execFileSync("node", [script, ".scratch/mockup.png"], { cwd: ctx.cwd, encoding: "utf8" });
+        ctx.ui.notify?.("Saved clipboard image to .scratch/mockup.png", "info");
+        pi.sendUserMessage("I copied a UI mockup to .scratch/mockup.png. Please read it and use it as visual reference.", { expandPromptTemplates: true });
+      } catch (err: any) {
+        ctx.ui.notify?.(`Failed to read clipboard image: ${err.message}`, "error");
+      }
       return;
     }
     return;

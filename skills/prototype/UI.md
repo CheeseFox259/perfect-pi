@@ -43,6 +43,26 @@ Write down the plan in one line, in the prototype's location or a top-of-file co
 
 This works whether the user is here to push back or not.
 
+### 1.5. Visual concept exploration (optional, human-in-the-loop)
+
+Before drafting code for radically different layouts, you can ground the design in visual concept mockups generated via ChatGPT / DALL-E:
+
+1. **Craft a professional DALL-E prompt**:
+   Generate a self-contained, high-fidelity UI mockup prompt tailored to the product's domain:
+   - **Format**: `16:9 desktop web app UI mockup` or `4:3 dashboard interface`.
+   - **Visual style**: Clean modern SaaS design system, high typographic hierarchy, crisp components, subtle borders, slate/neutral palette with vivid accent, high contrast, Figma/Dribbble quality, flat vector UI aesthetics, no blurry text.
+   - **Layout structure**: Describe the exact functional zones (e.g. left navigation bar, central data metrics, right detail drawer).
+2. **Present the prompt to the user**:
+   In interactive sessions, call the native `question` tool. Present the prompt clearly and offer three options:
+   - `[Clipboard (recommended)]`: "Prompt provided above. After generating in ChatGPT web, right-click 'Copy Image' and select this."
+   - `[File path]`: "I have saved the image to a local file (e.g. `.scratch/mockup.png`)."
+   - `[Skip]`: "Skip visual mockup and proceed directly to code variants."
+3. **Ingest the visual attachment**:
+   - For clipboard: run `node scripts/clipboard-image.mjs .scratch/mockup.png` to automatically extract the clipboard PNG to disk without manual file dialogs.
+   - Then call `read({ path: ".scratch/mockup.png" })` to load the image into the agent context as a native multimodal visual attachment.
+4. **Vision-driven implementation**:
+   Inspect the rendered mockup's spatial layout, color tokens, and density, then implement the code variants matching that visual target using the project's real component library (Tailwind, shadcn, CSS).
+
 ### 2. Generate radically different variants
 
 Draft each variant. Hold each one to:
