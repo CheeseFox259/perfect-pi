@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { chmodSync, copyFileSync, existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync, lstatSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -100,6 +100,37 @@ test("the pinned Pi runtime is compared with the installed runtime", async (t) =
   const synced = f.runFile("setup.mjs", ["--skip-package-install"], env);
   assert.equal(synced.status, 0, synced.stderr);
   assert.match(synced.stdout, /PI RUNTIME DRIFTED: 1\.0\.0 installed; manifest pins 0\.99\.1/);
+});
+
+test("Git packages retain filters, verify actual HEAD, and sync idempotently", (t) => {
+  const f = installFixture(t);
+  const checkout = join(f.agentDir, "git", "github.com", "fixture", "sol-pi");
+  f.json(join(checkout, "package.json"), { name: "fixture-sol-pi", version: "0.1.0" });
+  const git = (...args) => execFileSync("git", ["-C", checkout, ...args], { encoding: "utf8" }).trim();
+  git("init", "-q");
+  git("add", "package.json");
+  git("-c", "user.name=fixture", "-c", "user.email=fixture@example.test", "commit", "-qm", "fixture");
+  const ref = git("rev-parse", "HEAD");
+  const pkg = { source: `git:github.com/fixture/sol-pi@${ref}`, extensions: [] };
+  f.manifest.packages = [pkg];
+  f.manifest.skills = [];
+  f.json(join(f.repo, "manifest.json"), f.manifest);
+  f.json(join(f.repo, "global", "sol-pi.json"), { version: 1, observationPack: true });
+  const env = { PATH: process.env.PATH };
+  for (let n = 0; n < 2; n++) {
+    const synced = f.runFile("setup.mjs", ["--skip-package-install", "--skip-skill-install"], env);
+    assert.equal(synced.status, 0, synced.stderr);
+    assert.doesNotMatch(synced.stdout, /PACKAGE MISSING/);
+  }
+  assert.deepEqual(JSON.parse(readFileSync(join(f.agentDir, "settings.json"), "utf8")).packages, [pkg]);
+  assert.equal(f.doctor(env).statuses.packages.status, "SYNCED");
+  assert.equal(f.doctor(env).statuses["SoL-Pi config"].status, "SYNCED");
+  f.put(join(checkout, "changed.txt"), "changed HEAD\n");
+  git("add", "changed.txt");
+  git("-c", "user.name=fixture", "-c", "user.email=fixture@example.test", "commit", "-qm", "drift");
+  assert.equal(f.doctor(env).statuses.packages.status, "MISSING");
+  rmSync(checkout, { recursive: true, force: true });
+  assert.equal(f.doctor(env).statuses.packages.status, "MISSING");
 });
 
 test("skipping a source update retains the installed pin and a normal dry-run retries it", (t) => {

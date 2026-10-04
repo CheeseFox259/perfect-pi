@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "actionFusion": true,
+  "observationPack": true,
+  "evidencePreservingReducer": true,
+  "evidencePreservingReducerProvider": "cpa",
+  "evidencePreservingReducerModel": "gemini-3.8-flash-high",
+  "onlineContextCompact": false,
+  "cacheWriteReadRatio": 12.5
+}

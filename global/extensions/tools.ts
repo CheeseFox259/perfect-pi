@@ -71,6 +71,10 @@ export default function toolsExtension(pi: ExtensionAPI) {
 			// Restore saved tool selection (filter to only tools that still exist)
 			const allToolNames = allTools.map((t) => t.name);
 			enabledTools = new Set(savedTools.filter((t: string) => allToolNames.includes(t)));
+			for (const tool of allTools) {
+				if (tool.exposure === "hidden") continue;
+				if (["obs_recall", "update_plan"].includes(tool.name) && allowed(tool.name)) enabledTools.add(tool.name);
+			}
 			applyTools();
 		} else {
 			// Without saved state use compact defaults, unless CLI tools were explicit.

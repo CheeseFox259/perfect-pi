@@ -210,7 +210,23 @@
       "description": "Recon scout pinned to default model cpa/gemini-3.8-flash-high"
     }
   },
+  "packages": {
+    "sol-pi": {
+      "type": "upstream-adapted",
+      "repo": "https://github.com/NVlabs/SoL-Pi.git",
+      "pinnedRef": "e1a586af0ad8956f42ae5b26bba20e48fbf30e00",
+      "localPath": "global/extensions/sol-pi.ts",
+      "description": "Standalone upstream package loaded through a guarded Perfect Pi adapter; original package extension is filtered out",
+      "preservedFeatures": ["Exact observation recall", "Native online compaction opt-in", "Evidence-checked log reduction"],
+      "adaptations": ["Guarded nested bash for fused validation", "Pi 1.0 error outcomes", "Authorized reducer route and usage accounting", "Recall availability checks"]
+    }
+  },
   "extensions": {
+    "sol-pi": {
+      "type": "custom",
+      "localPath": "global/extensions/sol-pi.ts",
+      "description": "Managed SoL-Pi integration, safe fusion, exact recall, accounted reducer, optional native compaction"
+    },
     "question": {
       "type": "custom",
       "localPath": "global/extensions/question.ts",

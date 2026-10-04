@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "piVersion": "1.0.0",
+  "piVersion": "1.0.2",
   "skillInstaller": "skills@1.7.0",
   "managedSettings": {
     "theme": "cc-dark",
@@ -14,6 +14,7 @@
     "enableSkillCommands": true
   },
   "packages": [
+    {"source": "git:github.com/NVlabs/SoL-Pi@e1a586af0ad8956f42ae5b26bba20e48fbf30e00", "extensions": [], "capabilities": ["observation-pack", "action-fusion", "log-reducer", "online-compaction"]},
     {"source": "npm:pi-web-access@0.33.0", "capabilities": ["research", "fetch"]},
     {"source": "npm:pi-matt-subagent@0.5.3", "capabilities": ["parallel-agents", "background-research", "review"]},
     {"source": "npm:pi-agent-browser-native@0.8.1", "capabilities": ["browser-verification"]},

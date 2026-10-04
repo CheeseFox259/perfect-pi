@@ -7,7 +7,7 @@ let piEntry;
 try { piEntry = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent")); }
 catch { piEntry = join(execFileSync("npm", ["root", "--global"], { encoding: "utf8" }).trim(), "@earendil-works/pi-coding-agent/dist/index.js"); }
 const { loadExtensions } = await import(pathToFileURL(join(dirname(piEntry), "core/extensions/loader.js")));
-const names = ["read", "bash", "edit", "write", "questionnaire", "subagent", "capabilities", "web_search", "fetch_content", "process", "user_plugin"];
+const names = ["read", "bash", "edit", "write", "questionnaire", "subagent", "capabilities", "web_search", "fetch_content", "process", "user_plugin", "obs_recall"];
 async function fixture(entries = [], initial = names) {
   const loaded = await loadExtensions([join(import.meta.dirname, "global/extensions/tools.ts")], import.meta.dirname);
   assert.deepEqual(loaded.errors, []);
@@ -46,7 +46,7 @@ test("status-only capability query does not change tools or session", async () =
 });
 test("saved manual selection survives startup, removed tools are filtered", async () => {
   const f = await fixture([{ type: "custom", customType: "tools-config", data: { enabledTools: ["read", "process", "removed_plugin"] } }]);
-  assert.deepEqual(f.active(), ["read", "process"]);
+  assert.deepEqual(f.active(), ["read", "process", "obs_recall"]);
 });
 test("CLI restrictions survive saved state and capability activation", async () => {
   const original = process.argv;

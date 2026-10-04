@@ -4,9 +4,11 @@ Perfect Pi 是一套运行在 Pi 上的全栈工程工作流配置。它把需�
 
 本文按日常使用顺序编写。默认假设：
 
-- 已安装 Pi `1.0.0`（与 `manifest.json` 中的 `piVersion` 一致）。
+- 已安装 Pi `1.0.2`（与 `manifest.json` 中的 `piVersion` 一致）。
 - 当前仓库是 `/Users/superhacker/perfect-pi`，实际使用时替换为你的路径。
 - Node.js、Git 和 Pi 已在 `PATH` 中。
+
+SoL-Pi 已作为受管 Git package 深度接入：默认启用受 guardrails 保护的融合验证、精确观察召回，以及你授权的 `cpa/gemini-3.8-flash-high` 日志 reducer；在线压缩默认关闭，可在可信项目中开启。使用 `/sol-pi` 查看有效配置。日志外发边界、20 次 session 请求上限、项目覆盖和回滚方式见 [SoL-Pi 接入说明](sol-pi.md)。
 
 ## 1. 安装与同步
 

@@ -1,7 +1,9 @@
+import { execFileSync } from "node:child_process";
 import { cp, lstat, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { existsSync, realpathSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 import { homedir } from "node:os";
 
 const root = dirname(fileURLToPath(import.meta.url));
@@ -18,6 +20,11 @@ const readJson = async (path, fallback = {}) => {
 };
 
 const packageSources = (manifest) => manifest.packages.map((pkg) => typeof pkg === "string" ? pkg : pkg.source);
+const packageDeclarations = (manifest) => manifest.packages.map((pkg) => {
+  if (typeof pkg === "string") return pkg;
+  const filters = Object.fromEntries(["extensions", "skills", "prompts", "themes"].filter((key) => key in pkg).map((key) => [key, pkg[key]]));
+  return Object.keys(filters).length ? { source: pkg.source, ...filters } : pkg.source;
+});
 
 const piRuntimePackage = "@earendil-works/pi-coding-agent";
 
@@ -113,6 +120,8 @@ async function managedResourceMap() {
     }
   };
   await add(join(root, "global", "AGENTS.md"), "AGENTS.md");
+  await add(join(root, "global", "sol-pi.json"), "sol-pi.json");
+  await add(join(root, "docs", "sol-pi.md"), "docs/sol-pi.md");
   await add(join(root, "global", "agents"), "agents");
   await add(join(root, "global", "prompts"), "prompts");
   await add(join(root, "global", "extensions"), "extensions");
@@ -144,7 +153,7 @@ async function settingsState(manifest, sourceSettings, previousState, components
   const next = {
     ...live,
     ...sourceSettings,
-    packages: [...unmanagedPackages, ...managedPackages],
+    packages: [...unmanagedPackages, ...packageDeclarations(manifest)],
     skills: [...unmanagedSkills, ...currentManagedPatterns],
   };
   return { settingsPath, live, next, managedPackages, currentManagedPatterns };
@@ -228,7 +237,20 @@ function packageDirectory(source) {
   return name ? join(agentDir, "npm", "node_modules", name) : undefined;
 }
 
-async function installedPackageMatches(source) {
+export async function installedPackageMatches(source) {
+  if (source.startsWith("git:")) {
+    const ref = source.match(/@([a-f0-9]{40})$/)?.[1];
+    if (!ref) throw new Error(`Managed Git packages require a full commit pin: ${source}`);
+    const runtime = await detectPiRuntime();
+    if (!runtime) return false;
+    const { DefaultPackageManager, SettingsManager } = await import(join(runtime.root, piRuntimePackage, "dist", "index.js"));
+    const manager = new DefaultPackageManager({ cwd: root, agentDir, settingsManager: SettingsManager.inMemory() });
+    const directory = manager.getInstalledPath(source, "user");
+    if (!directory || !existsSync(join(directory, "package.json"))) return false;
+    try {
+      return execFileSync("git", ["-C", directory, "rev-parse", "HEAD"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim() === ref;
+    } catch { return false; }
+  }
   const directory = packageDirectory(source);
   if (!directory || !existsSync(directory)) return false;
   const { version } = packageSpec(source);
@@ -397,7 +419,7 @@ export async function inspect() {
   const previousPatterns = new Set(previousState.skillPatterns ?? []);
   const livePatterns = liveSettings.skills ?? [];
   const statuses = {};
-  const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+  const same = isDeepStrictEqual;
   const mark = (name, status, detail = "") => { statuses[name] = { status, detail }; };
 
   if (!existsSync(join(agentDir, "AGENTS.md"))) mark("AGENTS.md", "MISSING");
@@ -420,7 +442,8 @@ export async function inspect() {
   const missingPackages = packageStatus.filter(({ installed }) => !installed).map(({ source }) => source);
   const observedManagedPackages = livePackages.filter((pkg) => desiredPackages.includes(pkg));
   const staleManagedPackages = livePackages.filter((pkg) => previousPackages.has(pkg) && !desiredPackages.includes(pkg));
-  const packagesMatch = desiredPackages.every((pkg, index) => observedManagedPackages[index] === pkg);
+  const packagesMatch = desiredPackages.every((pkg, index) => observedManagedPackages[index] === pkg)
+    && packageDeclarations(manifest).every((expected) => liveSettings.packages?.some((actual) => same(actual, expected)));
   mark("packages", packagesMatch && staleManagedPackages.length === 0 && missingPackages.length === 0 ? "SYNCED" : missingPackages.length > 0 ? "MISSING" : "DRIFTED", `${observedManagedPackages.length} live / ${desiredPackages.length} configured; ${missingPackages.length} missing on disk; ${staleManagedPackages.length} stale managed`);
   const stalePatterns = livePatterns.filter((pattern) => previousPatterns.has(pattern) && !desiredPatterns.includes(pattern));
   const patternsMatch = desiredPatterns.every((pattern) => livePatterns.includes(pattern)) && stalePatterns.length === 0;
@@ -467,6 +490,14 @@ export async function inspect() {
     .map((entry) => join(entry, process.platform === "win32" ? "agent-browser.exe" : "agent-browser"))
     .find((path) => existsSync(path));
   mark("browser runtime", browserPath ? "SYNCED" : "MISSING", browserPath ?? "Install upstream agent-browser and expose it on PATH");
+  if (resourceMap.has("sol-pi.json")) {
+    const target = join(agentDir, "sol-pi.json");
+    const synced = existsSync(target) && await readFile(target, "utf8") === await readFile(resourceMap.get("sol-pi.json"), "utf8");
+    const config = await readJson(target, null).catch(() => null);
+    const projectConfig = join(process.cwd(), ".pi", "sol-pi.json");
+    mark("SoL-Pi config", !existsSync(target) ? "MISSING" : synced ? "SYNCED" : "DRIFTED",
+      config ? `${target}; fusion=${config.actionFusion}; observations=${config.observationPack}; reducer=${config.evidencePreservingReducer}; compact=${config.onlineContextCompact}${existsSync(projectConfig) ? `; trusted project may override via ${projectConfig}` : ""}` : "invalid or missing JSON");
+  }
   const ok = Object.values(statuses).every(({ status }) => status === "SYNCED");
   return { ok, agentDir, source: root, statuses, liveSettings, desiredPackages, desiredPatterns };
 }

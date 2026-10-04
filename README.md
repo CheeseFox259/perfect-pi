@@ -1,6 +1,6 @@
 # Perfect Pi
 
-A versioned Pi environment for full-stack engineering with Matt Pocock Skills as the methodology layer.
+A versioned Pi environment for full-stack engineering with Matt Pocock Skills as the methodology layer. The managed runtime target is Pi 1.0.2.
 
 - [中文使用指南](docs/USAGE.zh-CN.md)
 
@@ -75,6 +75,7 @@ node route-smoke.mjs /tmp/route-results.json
 - `pi-matt-subagent` provides blocking parallel agents and background research; Perfect Pi adds a model-inheriting `implementer` role for ticket worktrees.
 - `pi-web-access` provides web research and fetch; external-system access comes from the built-in `mcp` extension and the configured MCP servers, reached after the `mcp` capability group is enabled.
 - `pi-agent-browser-native` exposes browser verification after enabling the `browser` capability, with additional advanced tools loaded through its native loader. Install upstream `agent-browser` separately and keep it on `PATH`.
+- SoL-Pi is pinned as a Git package and loaded once through a Perfect Pi adapter: guarded edit/write validation, exact observation recall, and evidence-checked log reduction are enabled; native online compaction is project opt-in. Reducer calls use `cpa/gemini-3.8-flash-high`, with a 20-request session limit and tool-result usage accounting. See [SoL-Pi configuration, evidence policy, and rollback](docs/sol-pi.md).
 - LSP, managed processes, deterministic guardrails, and `pi-cc-extensions` support verification and UX.
 
 ## Verification tiers
@@ -85,7 +86,7 @@ node route-smoke.mjs /tmp/route-results.json
 
 For product-level completion, use `verify-product`. Results must distinguish verified, not run, blocked, and not applicable.
 
-User-specific credentials, sessions, models, and unrelated settings stay local. Do not install duplicate plan, todo, memory, context-pruning, or subagent systems.
+User-specific credentials, sessions, models, and unrelated settings stay local. SoL-Pi is the explicitly managed efficiency integration; its working plan never replaces the ticket tracker. Do not install additional plan, todo, memory, context-pruning, or subagent systems.
 
 ## Checks
 
