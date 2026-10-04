@@ -413,7 +413,7 @@ async function sync({ dryRun = false, skipPackageInstall = false, skipSkillInsta
  */
 export function resolveManifestRef(manifest, sourceName) {
   let ref = (manifest.skills || []).find((s) => s.source === sourceName)?.ref || null;
-  if (!ref && manifest.solPi && (sourceName === "NVlabs/SoL-Pi" || sourceName === "SoL-Pi")) {
+  if (!ref && manifest.solPi && (sourceName.includes("SoL-Pi") || sourceName === "NVlabs/SoL-Pi" || sourceName === "CheeseFox259/SoL-Pi")) {
     ref = manifest.solPi.pinnedRef || (manifest.solPi.source?.split("@")[1] || null);
   }
   if (!ref && manifest.packages) {

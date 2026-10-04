@@ -13,7 +13,7 @@ try { piEntry = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-age
 catch { piEntry = join(execFileSync("npm", ["root", "--global"], { encoding: "utf8" }).trim(), "@earendil-works/pi-coding-agent/dist/index.js"); }
 const { createAgentSession, DefaultResourceLoader, SessionManager, SettingsManager } = await import(pathToFileURL(piEntry));
 const { fauxAssistantMessage, fauxProvider, fauxToolCall } = await import(pathToFileURL(join(dirname(piEntry), "../node_modules/@earendil-works/pi-ai/dist/providers/faux.js")));
-const SOL_PI_SOURCE = "git:github.com/NVlabs/SoL-Pi@e1a586af0ad8956f42ae5b26bba20e48fbf30e00";
+const SOL_PI_SOURCE = "git:github.com/CheeseFox259/SoL-Pi@93fd67a833da1b6236cf2582f02f7a6454d6d941";
 const agentDir = process.env.PI_CODING_AGENT_DIR ?? join(process.env.HOME ?? tmpdir(), ".pi", "agent");
 const adapter = join(import.meta.dirname, "global/extensions/sol-pi.ts");
 const baseConfig = { version: 1, actionFusion: true, observationPack: true, evidencePreservingReducer: false, onlineContextCompact: false, cacheWriteReadRatio: 12.5 };
@@ -246,4 +246,22 @@ test("obs_recall throws unknown observation id for foreign or nonexistent handle
   });
   assert.equal(f.results[0].isError, true);
   assert.match(textOf(f.results[0]), /Unknown observation id/);
+});
+test("runtime phase contract loads and covers core Matt Pocock skills", async () => {
+  const contractPath = join(import.meta.dirname, "skills", "ask-matt", "phase-contract.json");
+  const contract = JSON.parse(await readFile(contractPath, "utf8"));
+  assert.ok(contract, "phase contract must load");
+  assert.equal(contract.version, 1);
+  assert.equal(contract.phases["grill-me"].policy, "forbidden");
+  assert.equal(contract.phases["to-spec"].policy, "checkpoint_eligible");
+  assert.equal(contract.phases["to-tickets"].policy, "strong_boundary");
+  assert.equal(contract.phases["implement"].policy, "fresh_context");
+  assert.equal(contract.phases["tdd"].policy, "forbidden");
+  assert.equal(contract.gates.gateA_durability.failClosed, true);
+});
+test("upstream fork fixes: verified by contract check on patched SoL-Pi", async () => {
+  const result = await checkSolPiContract();
+  assert.equal(result.ok, true, result.errors.join("; "));
+  assert.equal(result.actualRef, "93fd67a833da1b6236cf2582f02f7a6454d6d941");
+  assert.ok(result.verifiedExports.includes("extensions/online-context-compact/index.ts:buildCompactionInstructions"));
 });

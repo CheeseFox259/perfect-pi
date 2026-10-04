@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": 1,
+  "title": "Perfect Pi Runtime Phase Contract",
+  "description": "Machine-readable contract governing phase boundaries, context compaction gates, and lifecycle transitions across Matt Pocock skills.",
+  "phases": {
+    "grill-me": {
+      "skill": "grill-me",
+      "command": "/skill:grill-me",
+      "policy": "forbidden",
+      "allowMidPhaseCompact": false,
+      "allowBoundaryCompact": false,
+      "recommendedBoundaryAction": "continue",
+      "rationale": "Grilling requires continuous reasoning across stress-testing; lossy summarization causes the model to lose architectural nuance."
+    },
+    "grill-with-docs": {
+      "skill": "grill-with-docs",
+      "command": "/skill:grill-with-docs",
+      "policy": "forbidden",
+      "allowMidPhaseCompact": false,
+      "allowBoundaryCompact": false,
+      "recommendedBoundaryAction": "continue",
+      "rationale": "Documentation grilling requires keeping primary citations and domain terminology intact."
+    },
+    "to-spec": {
+      "skill": "to-spec",
+      "command": "/skill:to-spec",
+      "policy": "checkpoint_eligible",
+      "allowMidPhaseCompact": false,
+      "allowBoundaryCompact": true,
+      "recommendedBoundaryAction": "compact",
+      "rationale": "Once SPEC.md is written and verified, chat rationale is externalized into the durable artifact.",
+      "durabilityGate": {
+        "requiredArtifacts": [".scratch/*/spec.md", "docs/**/*.md"],
+        "failClosed": true
+      },
+      "customInstructions": "Preserve the architectural decisions, constraints, and scope boundaries established in SPEC.md. Discard exploratory brainstorming."
+    },
+    "to-tickets": {
+      "skill": "to-tickets",
+      "command": "/skill:to-tickets",
+      "policy": "strong_boundary",
+      "allowMidPhaseCompact": false,
+      "allowBoundaryCompact": true,
+      "recommendedBoundaryAction": "fresh_context",
+      "rationale": "Ticket graph is fully persisted under .scratch/<feature>/issues/; previous conversational history is now disposable.",
+      "durabilityGate": {
+        "requiredArtifacts": [".scratch/*/issues/*.md"],
+        "failClosed": true
+      }
+    },
+    "implement-spec": {
+      "skill": "implement-spec",
+      "command": "/skill:implement-spec",
+      "policy": "fresh_context",
+      "allowMidPhaseCompact": false,
+      "allowBoundaryCompact": true,
+      "recommendedBoundaryAction": "fresh_context",
+      "rationale": "Ticket graph execution uses isolated subagents per ticket; coordinator context must remain lean."
+    },
+    "implement": {
+      "skill": "implement",
+      "command": "/skill:implement",
+      "policy": "fresh_context",
+      "allowMidPhaseCompact": false,
+      "allowBoundaryCompact": true,
+      "recommendedBoundaryAction": "fresh_context",
+      "rationale": "Each ticket should execute in a clean context rehydrated strictly from ticket + spec + repo commit.",
+      "durabilityGate": {
+        "gitCleanOrCommitted": true,
+        "failClosed": true
+      }
+    },
+    "tdd": {
+      "skill": "tdd",
+      "command": "/skill:tdd",
+      "policy": "forbidden",
+      "allowMidPhaseCompact": false,
+      "allowBoundaryCompact": true,
+      "recommendedBoundaryAction": "continue",
+      "rationale": "Failing test output and diagnostic traces must remain intact until refactor phase completes."
+    },
+    "diagnosing-bugs": {
+      "skill": "diagnosing-bugs",
+      "command": "/skill:diagnosing-bugs",
+      "policy": "forbidden",
+      "allowMidPhaseCompact": false,
+      "allowBoundaryCompact": true,
+      "recommendedBoundaryAction": "continue",
+      "rationale": "Hypotheses, reproduction traces, and negative evidence are primary sources until root cause is isolated."
+    },
+    "code-review": {
+      "skill": "code-review",
+      "command": "/skill:code-review",
+      "policy": "forbidden",
+      "allowMidPhaseCompact": false,
+      "allowBoundaryCompact": true,
+      "recommendedBoundaryAction": "continue",
+      "rationale": "Review passes execute via subagents or complete in one continuous evaluation; reports are durable artifacts."
+    }
+  },
+  "gates": {
+    "gateA_durability": {
+      "name": "Durability Gate",
+      "description": "Phase deliverables must be committed or written to disk before compaction.",
+      "failClosed": true
+    },
+    "gateB_semanticDependency": {
+      "name": "Semantic Dependency Gate",
+      "description": "If downstream work requires primary source reasoning (e.g. grilling -> implementation without spec), compaction is withheld.",
+      "failClosed": true
+    },
+    "gateC_economic": {
+      "name": "Economic Gate",
+      "description": "ExpectedTokensSaved > CacheRewriteCost, with a minimum saving threshold of 2,000 tokens.",
+      "minTokensSaved": 2000,
+      "failClosed": true
+    }
+  }
+}

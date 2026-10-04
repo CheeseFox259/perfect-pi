@@ -18,11 +18,13 @@
       "description": "Vercel web interface guidelines and React performance skills"
     },
     "NVlabs/SoL-Pi": {
-      "repo": "https://github.com/NVlabs/SoL-Pi.git",
-      "pinnedRef": "e1a586af0ad8956f42ae5b26bba20e48fbf30e00",
+      "repo": "https://github.com/CheeseFox259/SoL-Pi.git",
+      "upstreamRepo": "https://github.com/NVlabs/SoL-Pi.git",
+      "pinnedRef": "93fd67a833da1b6236cf2582f02f7a6454d6d941",
+      "upstreamRef": "e1a586af0ad8956f42ae5b26bba20e48fbf30e00",
       "integration": "adapter",
       "compatibilityTarget": "pi-1.0.2",
-      "description": "NVIDIA SoL-Pi efficiency extension suite (fused validation, observations, reducer, online compaction)"
+      "description": "NVIDIA SoL-Pi efficiency extension suite (fork with OCC bug fixes: stale horizon, progress loss, prefix bounds)"
     }
   },
   "skills": {

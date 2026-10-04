@@ -14,8 +14,8 @@
     "enableSkillCommands": true
   },
   "solPi": {
-    "source": "git:github.com/NVlabs/SoL-Pi@e1a586af0ad8956f42ae5b26bba20e48fbf30e00",
-    "pinnedRef": "e1a586af0ad8956f42ae5b26bba20e48fbf30e00",
+    "source": "git:github.com/CheeseFox259/SoL-Pi@93fd67a833da1b6236cf2582f02f7a6454d6d941",
+    "pinnedRef": "93fd67a833da1b6236cf2582f02f7a6454d6d941",
     "reducerPolicy": {
       "provider": "cpa",
       "model": "gemini-3.8-flash-high",
@@ -23,7 +23,7 @@
     }
   },
   "packages": [
-    {"source": "git:github.com/NVlabs/SoL-Pi@e1a586af0ad8956f42ae5b26bba20e48fbf30e00", "extensions": [], "capabilities": ["observation-pack", "action-fusion", "log-reducer", "online-compaction"]},
+    {"source": "git:github.com/CheeseFox259/SoL-Pi@93fd67a833da1b6236cf2582f02f7a6454d6d941", "extensions": [], "capabilities": ["observation-pack", "action-fusion", "log-reducer", "online-compaction"]},
     {"source": "npm:pi-web-access@0.33.0", "capabilities": ["research", "fetch"]},
     {"source": "npm:pi-matt-subagent@0.5.3", "capabilities": ["parallel-agents", "background-research", "review"]},
     {"source": "npm:pi-agent-browser-native@0.8.1", "capabilities": ["browser-verification"]},

@@ -7,7 +7,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
-export const SOL_PI_SOURCE = "git:github.com/NVlabs/SoL-Pi@e1a586af0ad8956f42ae5b26bba20e48fbf30e00";
+export const SOL_PI_SOURCE = "git:github.com/CheeseFox259/SoL-Pi@93fd67a833da1b6236cf2582f02f7a6454d6d941";
 
 export interface ReducerPolicy {
   provider: string;
@@ -19,6 +19,61 @@ export interface SolPiPolicy {
   source: string;
   pinnedRef: string;
   reducerPolicy: ReducerPolicy;
+}
+
+export interface PhaseConfig {
+  skill: string;
+  command: string;
+  policy: "forbidden" | "checkpoint_eligible" | "strong_boundary" | "fresh_context";
+  allowMidPhaseCompact: boolean;
+  allowBoundaryCompact: boolean;
+  recommendedBoundaryAction: "continue" | "compact" | "fresh_context" | "clear";
+  rationale: string;
+  durabilityGate?: {
+    requiredArtifacts?: string[];
+    gitCleanOrCommitted?: boolean;
+    failClosed?: boolean;
+  };
+  customInstructions?: string;
+}
+
+export interface PhaseContract {
+  version: number;
+  title: string;
+  phases: Record<string, PhaseConfig>;
+  gates: Record<string, any>;
+}
+
+export function loadPhaseContract(agentDir: string = getAgentDir(), cwd: string = process.cwd()): PhaseContract | null {
+  const candidates = [
+    join(cwd, "skills", "ask-matt", "phase-contract.json"),
+    join(agentDir, "skills", "ask-matt", "phase-contract.json"),
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      try {
+        return JSON.parse(readFileSync(candidate, "utf8"));
+      } catch {}
+    }
+  }
+  return null;
+}
+
+function checkDurabilityGate(cwd: string, gate: PhaseConfig["durabilityGate"]): boolean {
+  if (!gate) return true;
+  if (gate.requiredArtifacts) {
+    let satisfied = false;
+    for (const pattern of gate.requiredArtifacts) {
+      if (pattern.includes("*")) {
+        const scratchDir = join(cwd, ".scratch");
+        if (existsSync(scratchDir)) satisfied = true;
+      } else if (existsSync(join(cwd, pattern))) {
+        satisfied = true;
+      }
+    }
+    if (!satisfied && gate.failClosed) return false;
+  }
+  return true;
 }
 
 export function loadSolPiPolicy(agentDir: string = getAgentDir()): SolPiPolicy {
@@ -33,7 +88,7 @@ export function loadSolPiPolicy(agentDir: string = getAgentDir()): SolPiPolicy {
         if (manifest.solPi) {
           return {
             source: manifest.solPi.source ?? SOL_PI_SOURCE,
-            pinnedRef: manifest.solPi.pinnedRef ?? "e1a586af0ad8956f42ae5b26bba20e48fbf30e00",
+            pinnedRef: manifest.solPi.pinnedRef ?? "93fd67a833da1b6236cf2582f02f7a6454d6d941",
             reducerPolicy: {
               provider: manifest.solPi.reducerPolicy?.provider ?? "cpa",
               model: manifest.solPi.reducerPolicy?.model ?? "gemini-3.8-flash-high",
@@ -46,7 +101,7 @@ export function loadSolPiPolicy(agentDir: string = getAgentDir()): SolPiPolicy {
   }
   return {
     source: SOL_PI_SOURCE,
-    pinnedRef: "e1a586af0ad8956f42ae5b26bba20e48fbf30e00",
+    pinnedRef: "93fd67a833da1b6236cf2582f02f7a6454d6d941",
     reducerPolicy: {
       provider: "cpa",
       model: "gemini-3.8-flash-high",
@@ -206,8 +261,16 @@ export function registerAccountedReducer(extensionApi: ExtensionAPI, reducer: an
 
 export default async function solPiIntegration(pi: ExtensionAPI) {
   const manager = new DefaultPackageManager({ cwd: process.cwd(), agentDir: getAgentDir(), settingsManager: SettingsManager.inMemory() });
-  const root = manager.getInstalledPath(SOL_PI_SOURCE, "user");
-  if (!root) throw new Error("SoL-Pi package missing. Run Perfect Pi setup before loading the adapter.");
+  const initialPolicy = loadSolPiPolicy(getAgentDir());
+  let root = manager.getInstalledPath(initialPolicy.source, "user")
+    || manager.getInstalledPath(SOL_PI_SOURCE, "user")
+    || join(getAgentDir(), "git", "github.com", "CheeseFox259", "SoL-Pi")
+    || join(getAgentDir(), "git", "github.com", "NVlabs", "SoL-Pi");
+  if (!existsSync(join(root, "package.json"))) {
+    const fallback = join(getAgentDir(), "git", "github.com", "CheeseFox259", "SoL-Pi");
+    if (existsSync(join(fallback, "package.json"))) root = fallback;
+  }
+  if (!root || !existsSync(join(root, "package.json"))) throw new Error("SoL-Pi package missing. Run Perfect Pi setup before loading the adapter.");
   const load = (file: string) => import(pathToFileURL(join(root, "src", "sol-pi", file)).href);
   const configModule = await load("config.ts");
   let generation = 0;
@@ -297,6 +360,60 @@ export default async function solPiIntegration(pi: ExtensionAPI) {
       const compact = await load("extensions/online-context-compact/index.ts");
       compact.registerOnlineContextCompact(scoped, config.cacheWriteReadRatio);
     }
+
+    // --- Runtime Phase Contract Enforcement ---
+    const contract = loadPhaseContract(getAgentDir(), ctx.cwd);
+    let activePhase: PhaseConfig | null = null;
+
+    scoped.on("input", (inputEvent: any) => {
+      const text = typeof inputEvent?.text === "string" ? inputEvent.text : "";
+      const match = text.match(/^\/skill:([a-zA-Z0-9_-]+)/);
+      if (match && contract?.phases[match[1]]) {
+        activePhase = contract.phases[match[1]];
+        pi.appendEntry("perfect-pi-phase-transition", {
+          phase: activePhase.skill,
+          policy: activePhase.policy,
+          recommendedBoundaryAction: activePhase.recommendedBoundaryAction,
+        });
+      }
+    });
+
+    scoped.on("session_before_compact", (compactionEvent: any, cCtx: ExtensionContext) => {
+      if (compactionEvent.reason === "manual") return;
+      if (activePhase) {
+        if (!activePhase.allowMidPhaseCompact) {
+          pi.appendEntry("perfect-pi-sol-compaction-veto", {
+            phase: activePhase.skill,
+            policy: activePhase.policy,
+            reason: activePhase.rationale,
+          });
+          if (cCtx.mode === "tui") {
+            cCtx.ui.notify?.(`SoL Phase Contract: compaction vetoed during ${activePhase.skill} (${activePhase.rationale})`, "warning");
+          }
+          return { cancel: true };
+        }
+        if (activePhase.durabilityGate && !checkDurabilityGate(cCtx.cwd, activePhase.durabilityGate)) {
+          pi.appendEntry("perfect-pi-sol-compaction-veto", {
+            phase: activePhase.skill,
+            policy: activePhase.policy,
+            reason: "durability_gate_unmet",
+          });
+          if (cCtx.mode === "tui") {
+            cCtx.ui.notify?.(`SoL Phase Contract: compaction vetoed (deliverables not yet persisted to disk)`, "warning");
+          }
+          return { cancel: true };
+        }
+      }
+    });
+
+    scoped.on("session_compact", (compactEvent: any) => {
+      pi.appendEntry("perfect-pi-sol-compaction", {
+        triggered: true,
+        phase: activePhase?.skill ?? "unknown",
+        manual: compactEvent?.fromExtension === false,
+      });
+    });
+
     for (const handler of startHandlers) await handler(event, ctx);
     status = {
       source: policy.source,
@@ -305,6 +422,7 @@ export default async function solPiIntegration(pi: ExtensionAPI) {
       ...config,
       reducerRoute: authorizedRoute,
       reducerPolicy: policy.reducerPolicy,
+      phaseContract: contract ? { loaded: true, version: contract.version, phases: Object.keys(contract.phases) } : { loaded: false },
     };
     pi.appendEntry("perfect-pi-sol-config", status);
     if (ctx.mode === "tui") ctx.ui.setStatus("perfect-pi-sol", `SoL: fusion=${config.actionFusion} recall=${config.observationPack} reducer=${config.evidencePreservingReducer} compact=${config.onlineContextCompact}`);

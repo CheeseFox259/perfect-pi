@@ -1,6 +1,14 @@
 # SoL-Pi in Perfect Pi
 
-Perfect Pi runs on Pi 1.0.2. It installs NVlabs/SoL-Pi at commit `e1a586af0ad8956f42ae5b26bba20e48fbf30e00` and loads it through `global/extensions/sol-pi.ts`. The original package entrypoint is filtered out with `extensions: []`; Pi core and the upstream SoL-Pi checkout are not patched.
+Perfect Pi runs on Pi 1.0.2. It installs the patched SoL-Pi fork from `CheeseFox259/SoL-Pi` at commit `93fd67a833da1b6236cf2582f02f7a6454d6d941` (derived from upstream `NVlabs/SoL-Pi@e1a586af0ad8956f42ae5b26bba20e48fbf30e00`) and loads it through `global/extensions/sol-pi.ts`. The original package entrypoint is filtered out with `extensions: []`; Pi core is not patched.
+
+### Upstream Fixes in the Patched Fork
+
+The upstream `NVlabs/SoL-Pi` OCC implementation suffered from three known failure modes that are resolved in this fork:
+
+1. **Stale Request Horizon (Over-Compaction Loop):** `state.completedBoundaryRequestCounts` accumulated intervals across compactions, inflating future request predictions in late phases and causing repeated back-to-back compactions on already-small contexts. Fixed: `recordCompaction` now resets the request count interval history.
+2. **`pendingProgress` Loss in Summaries:** While `update_plan` collected detailed progress summaries (files changed, decisions, verifications), the compaction runner ignored them and sent a generic static string. Fixed: `buildCompactionInstructions` now formats the collected step progress and embeds it directly into the summarizer prompt.
+3. **Removable Prefix Overestimation:** `estimateNativeCompactionTokens` computed cut points without bounding them against actual provider-visible projected tokens, causing false economic compaction triggers on tiny sessions. Fixed: the removable prefix estimate is strictly bounded by visible projected tokens minus `keepRecentTokens`, and a minimum 1,000-token net savings threshold is enforced.
 
 ## Current Profile
 
@@ -57,15 +65,14 @@ To try online compaction in a trusted project, set `onlineContextCompact` to tru
 
 `update_plan` is session-local execution progress; it is not the issue tracker and does not change triage roles, claims, or verified ticket completion. Keep step IDs stable and register unfinished steps before completing them. Use it during execution, not to force compaction during unresolved grilling or spec/ticket authoring.
 
-## Workflow-Aware Compaction (Design — Not Yet Enforced in Code)
+## Workflow-Aware Compaction (Runtime-Enforced Contract)
 
-> **Implementation status**: The table and gates below describe the _target architecture_.
-> Today, enabling `onlineContextCompact` delegates directly to upstream SoL-Pi's OCC
-> with its economic model and `update_plan` step boundaries. The Matt-skill phase
-> boundary enforcement (Gates A–C, per-skill compaction policy) is a future integration
-> that requires hooking Pi's `turn_end` / `agent_before_settle` with skill phase state.
-> Until then, leave `onlineContextCompact: false` (default) and rely on Pi's native
-> compaction plus manual `/compact` from the Ctrl+Shift+P palette.
+The table and gates below are actively enforced by `global/extensions/sol-pi.ts` consuming the machine-readable contract [`skills/ask-matt/phase-contract.json`](../skills/ask-matt/phase-contract.json).
+
+Automatic compactions (from SoL-Pi OCC or background context pressure) are intercepted via Pi's `session_before_compact` event:
+- **Mid-phase compactions** in reasoning skills (`grilling`, `tdd`, `diagnosing-bugs`) are **vetoed** (`cancel: true`).
+- **Durability Gate (Gate A)** ensures deliverables (spec or tickets) exist on disk before checkpoint compaction is permitted.
+- **Manual `/compact`** commands from the user or the Ctrl+Shift+P palette are **never vetoed** (user authority is preserved).
 
 Perfect Pi adopts a **Workflow-Aware Compaction** model that unites Matt Pocock's phase structure with SoL-Pi's economic cost model:
 

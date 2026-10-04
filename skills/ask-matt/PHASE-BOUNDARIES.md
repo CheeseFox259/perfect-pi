@@ -41,6 +41,15 @@ In Pi, the native `subagent` tool is blocking, returning only when its tasks com
 
 `/compact` is the **default, not the first reach**. It sits at the bottom because the four questions above it are all cheaper or more precise. The failure mode when people start here is a fresh session that is confidently wrong about a decision the summary flattened.
 
+## Runtime Contract Enforcement
+
+In Perfect Pi, these boundaries are not merely prose advice—they are formally declared in [`phase-contract.json`](phase-contract.json) and enforced by the harness adapter (`global/extensions/sol-pi.ts`):
+
+1. **Mid-Phase Protection (Fail-Closed):** When a skill such as `/skill:grill-me`, `/skill:tdd`, or `/skill:diagnosing-bugs` is active, the runtime intercepts automatic compaction requests (including upstream SoL-Pi Online Context Compact) and vetos them (`allowMidPhaseCompact: false`). The primary reasoning chain remains intact.
+2. **Durability Gate (Gate A):** Compaction after `/skill:to-spec` or `/skill:to-tickets` is permitted only after durable deliverables (e.g. `spec.md`, tickets under `.scratch/*/issues/`) are verified on disk.
+3. **Summary Enrichment:** When checkpoint compaction executes, the adapter injects phase-specific instructions into the summarizer prompt to retain architecture decisions and constraints rather than relying on generic summaries.
+4. **Manual Authority:** The user can always manually issue `/compact` or use Ctrl+Shift+P (`SoL-Pi → Compact now`); manual user intent is never blocked by automatic gates.
+
 ## Primary and secondary sources
 
 Every move except **Continue** turns a **primary source** into a **secondary source**: the session as it happened, replaced by a summary of it. The trade is always the same shape:

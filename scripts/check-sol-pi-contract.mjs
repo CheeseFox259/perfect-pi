@@ -41,6 +41,7 @@ export async function checkSolPiContract(options = {}) {
   const agentDir = options.agentDir || process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent");
   const candidates = [
     options.packageDir,
+    join(agentDir, "git", "github.com", "CheeseFox259", "SoL-Pi"),
     join(agentDir, "git", "github.com", "NVlabs", "SoL-Pi"),
   ].filter(Boolean);
 
@@ -173,6 +174,7 @@ export async function checkSolPiContract(options = {}) {
   const occ = await loadModule("extensions/online-context-compact/index.ts");
   checkExports("extensions/online-context-compact/index.ts", occ, {
     registerOnlineContextCompact: "function",
+    buildCompactionInstructions: "function",
   });
 
   // Test functional sanity on exported helpers
