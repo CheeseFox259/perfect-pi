@@ -2,9 +2,10 @@ import { execFileSync } from "node:child_process";
 import { cp, lstat, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { existsSync, realpathSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { homedir } from "node:os";
+import { piRuntimeRoots as runtimeRoots, detectPiRuntime as resolveRuntime } from "./scripts/pi-runtime.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const agentDir = process.env.PI_CODING_AGENT_DIR
@@ -16,7 +17,7 @@ const statePath = join(agentDir, ".perfect-pi-state.json");
 
 const readJson = async (path, fallback = {}) => {
   if (!existsSync(path)) return fallback;
-  return JSON.parse(await readFile(path, "utf8"));
+  return JSON.parse((await readFile(path, "utf8")).replace(/^\uFEFF/, ""));
 };
 
 const packageSources = (manifest) => manifest.packages.map((pkg) => typeof pkg === "string" ? pkg : pkg.source);
@@ -32,25 +33,12 @@ const piRuntimePackage = "@earendil-works/pi-coding-agent";
 // installed package rather than from the ownership registry. PI_GLOBAL_NODE_MODULES
 // lets non-standard layouts and tests point the search at explicit roots.
 export function piRuntimeRoots() {
-  const roots = (process.env.PI_GLOBAL_NODE_MODULES ?? "").split(process.platform === "win32" ? ";" : ":").filter(Boolean);
-  const prefix = dirname(dirname(process.execPath));
-  roots.push(
-    join(prefix, "lib", "node_modules"),
-    join(prefix, "node_modules"),
-    "/opt/homebrew/lib/node_modules",
-    "/usr/local/lib/node_modules",
-    "/usr/lib/node_modules",
-  );
-  if (process.platform === "win32" && process.env.APPDATA) roots.push(join(process.env.APPDATA, "npm", "node_modules"));
-  return [...new Set(roots.map((candidate) => resolve(candidate)))];
+  return runtimeRoots({ agentDir });
 }
 
 export async function detectPiRuntime(roots = piRuntimeRoots()) {
-  for (const root of roots) {
-    const manifest = await readJson(join(root, ...piRuntimePackage.split("/"), "package.json"), null).catch(() => null);
-    if (manifest?.version) return { version: manifest.version, root };
-  }
-  return null;
+  const runtime = await resolveRuntime({ roots });
+  return runtime ? { version: runtime.version, root: dirname(dirname(runtime.root)) } : null;
 }
 
 function expectedSkillNames(manifest) {
@@ -122,6 +110,9 @@ async function managedResourceMap() {
   await add(join(root, "global", "AGENTS.md"), "AGENTS.md");
   await add(join(root, "global", "sol-pi.json"), "sol-pi.json");
   await add(join(root, "docs", "sol-pi.md"), "docs/sol-pi.md");
+  await add(join(root, "docs", "pi-compatibility.md"), "docs/pi-compatibility.md");
+  await add(join(root, "docs", "native-workflows.md"), "docs/native-workflows.md");
+  await add(join(root, "docs", "USAGE.zh-CN.md"), "docs/USAGE.zh-CN.md");
   await add(join(root, "manifest.json"), "manifest.json");
   await add(join(root, "global", "agents"), "agents");
   await add(join(root, "global", "prompts"), "prompts");
@@ -152,12 +143,30 @@ async function settingsState(manifest, sourceSettings, previousState, components
     !previousPatterns.has(pattern) && !currentManagedPatterns.includes(pattern),
   );
   const next = {
+    ...manifest.defaultSettings,
     ...live,
     ...sourceSettings,
     packages: [...unmanagedPackages, ...packageDeclarations(manifest)],
     skills: [...unmanagedSkills, ...currentManagedPatterns],
   };
   return { settingsPath, live, next, managedPackages, currentManagedPatterns };
+}
+
+async function writeGlobalSettings(settingsPath, content) {
+  const runtime = await resolveRuntime({ agentDir });
+  if (!runtime || !existsSync(runtime.entry)) {
+    await writeFile(settingsPath, content);
+    return;
+  }
+  const { FileSettingsStorage } = await import(pathToFileURL(join(dirname(runtime.entry), "core/settings-manager.js")).href);
+  new FileSettingsStorage(root, agentDir).withLock("global", (current) => {
+    const next = JSON.parse(content);
+    const latest = current ? JSON.parse(current.replace(/^\uFEFF/, "")) : {};
+    if (!latest || typeof latest !== "object" || Array.isArray(latest)) throw new Error("Global settings must be a JSON object");
+    // A picker may have saved a new model while package/skill synchronization was running.
+    if (Object.hasOwn(latest, "perfectPiCompaction")) next.perfectPiCompaction = latest.perfectPiCompaction;
+    return `${JSON.stringify(next, null, 2)}\n`;
+  });
 }
 
 async function linkedParents(targetDir) {
@@ -242,9 +251,9 @@ export async function installedPackageMatches(source) {
   if (source.startsWith("git:")) {
     const ref = source.match(/@([a-f0-9]{40})$/)?.[1];
     if (!ref) throw new Error(`Managed Git packages require a full commit pin: ${source}`);
-    const runtime = await detectPiRuntime();
+    const runtime = await resolveRuntime({ agentDir });
     if (!runtime) return false;
-    const { DefaultPackageManager, SettingsManager } = await import(join(runtime.root, piRuntimePackage, "dist", "index.js"));
+    const { DefaultPackageManager, SettingsManager } = await import(runtime.entry);
     const manager = new DefaultPackageManager({ cwd: root, agentDir, settingsManager: SettingsManager.inMemory() });
     const directory = manager.getInstalledPath(source, "user");
     if (!directory || !existsSync(join(directory, "package.json"))) return false;
@@ -391,7 +400,7 @@ async function sync({ dryRun = false, skipPackageInstall = false, skipSkillInsta
     Object.entries(installedSkillRefs).filter(([source]) => manifestSources.has(source))
   );
   if (!dryRun) {
-    await writeFile(settings.settingsPath, `${JSON.stringify(settings.next, null, 2)}\n`);
+    await writeGlobalSettings(settings.settingsPath, `${JSON.stringify(settings.next, null, 2)}\n`);
     await writeFile(statePath, `${JSON.stringify({
       schemaVersion: 1,
       packages: settings.managedPackages,
@@ -458,6 +467,13 @@ export async function inspect() {
   const managedSettings = manifest.managedSettings ?? {};
   const liveManagedSettings = Object.fromEntries(Object.keys(managedSettings).map((key) => [key, liveSettings[key]]));
   mark("settings", same(liveManagedSettings, managedSettings) ? "SYNCED" : "DRIFTED", "managed fields only");
+  if (manifest.defaultSettings?.perfectPiCompaction) {
+    const { resolveCompactionModel } = await import("./global/extensions/compaction-settings.mjs");
+    try {
+      const model = resolveCompactionModel(liveSettings);
+      mark("compaction model", "SYNCED", `${model.provider}/${model.model}; user preference, not a managed override`);
+    } catch (error) { mark("compaction model", "DRIFTED", error.message); }
+  }
   const packageStatus = await Promise.all(desiredPackages.map(async (source) => ({
     source,
     installed: await installedPackageMatches(source),

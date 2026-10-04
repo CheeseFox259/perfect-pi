@@ -6,25 +6,10 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 
-const defaultRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+import { detectPiRuntime } from "./pi-runtime.mjs";
+export { detectPiRuntime };
 
-export async function detectPiRuntime() {
-  const roots = [
-    join(homedir(), ".pi", "agent"),
-    "/opt/homebrew/lib/node_modules",
-    "/usr/local/lib/node_modules",
-  ];
-  for (const root of roots) {
-    const pkgPath = join(root, "@earendil-works", "pi-coding-agent", "package.json");
-    if (existsSync(pkgPath)) {
-      try {
-        const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
-        return { version: pkg.version, root: join(root, "@earendil-works", "pi-coding-agent") };
-      } catch {}
-    }
-  }
-  return null;
-}
+const defaultRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 export async function checkSolPiContract(options = {}) {
   const root = options.root ? resolve(options.root) : defaultRoot;
@@ -77,7 +62,7 @@ export async function checkSolPiContract(options = {}) {
     errors.push(`Installed SoL-Pi git HEAD mismatch: expected ${pinnedRef}, got ${actualRef}`);
   }
 
-  const runtime = await detectPiRuntime();
+  const runtime = await detectPiRuntime(options);
   if (!runtime) {
     errors.push("Pi coding agent host runtime not found");
     return { ok: false, pinnedRef, packageDir, actualRef, verifiedModules, verifiedExports, errors };

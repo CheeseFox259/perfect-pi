@@ -1,27 +1,59 @@
-/**
- * Session-scoped consent state for the SoL-Pi reducer.
- *
- * Consent is granted once per session via Ctrl+Shift+P palette or the first
- * interactive TUI prompt, and does NOT inherit to subagents or new sessions.
- *
- * This module is plain JS to allow imports from test files and the command
- * palette without needing the Pi TypeScript loader.
- */
+/** Session and route scoped decisions. Pending prompts are cancellable and shared. */
+const defaultRoute = "cpa/gemini-3.8-flash-high";
+const decisions = new Map();
+const prompts = new Map();
+const keyOf = (sessionId, route) => JSON.stringify([sessionId, route]);
 
-/** @type {Map<string, boolean>} */
-let consentMap = new Map();
-
-/** Check whether the reducer is authorized for the given session. */
-export function isReducerAuthorized(sessionId) {
-  return consentMap.get(sessionId) === true;
+export function reducerDecision(sessionId, route = defaultRoute) {
+  return decisions.get(keyOf(sessionId, route));
 }
 
-/** Grant reducer authorization for the given session. */
-export function authorizeReducer(sessionId) {
-  consentMap.set(sessionId, true);
+export function isReducerAuthorized(sessionId, route = defaultRoute) {
+  return reducerDecision(sessionId, route) === true;
 }
 
-/** Reset all consent state (called on new session_start generation). */
-export function resetReducerConsent() {
-  consentMap = new Map();
+export function authorizeReducer(sessionId, route = defaultRoute) {
+  decisions.set(keyOf(sessionId, route), true);
+}
+
+export function denyReducer(sessionId, route = defaultRoute) {
+  decisions.set(keyOf(sessionId, route), false);
+}
+
+export function requestReducerConsent(sessionId, prompt, { route = defaultRoute, signal, timeout = 60_000 } = {}) {
+  const key = keyOf(sessionId, route);
+  if (prompts.has(key)) return prompts.get(key).promise;
+  if (signal?.aborted) return Promise.resolve(undefined);
+  const controller = new AbortController();
+  const combined = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
+  let timer;
+  let onAbort;
+  const cancelled = new Promise((resolve) => {
+    onAbort = () => resolve(undefined);
+    combined.addEventListener("abort", onAbort, { once: true });
+    timer = setTimeout(() => controller.abort(), timeout);
+  });
+  const pending = {
+    controller,
+    promise: Promise.race([cancelled, Promise.resolve().then(() => combined.aborted ? undefined : prompt(combined))])
+      .finally(() => {
+        clearTimeout(timer);
+        combined.removeEventListener("abort", onAbort);
+        if (prompts.get(key) === pending) prompts.delete(key);
+      }),
+  };
+  prompts.set(key, pending);
+  return pending.promise;
+}
+
+export function resetReducerConsent(sessionId) {
+  for (const [key, pending] of prompts) {
+    if (sessionId === undefined || JSON.parse(key)[0] === sessionId) {
+      pending.controller.abort();
+      prompts.delete(key);
+    }
+  }
+  for (const key of decisions.keys()) {
+    if (sessionId === undefined || JSON.parse(key)[0] === sessionId) decisions.delete(key);
+  }
 }

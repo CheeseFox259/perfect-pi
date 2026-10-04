@@ -22,11 +22,16 @@ When upstream updates occur, your goal is to incorporate upstream algorithmic/me
 
 ### Step 1: Inspect Status
 
-Run the status check to discover remote updates and local override health:
+Run the Pi update and compatibility checks as well as the Skill lineage check:
 
 ```bash
+node scripts/check-pi-updates.mjs
+node scripts/check-pi-compatibility.mjs
+node scripts/check-sol-pi-contract.mjs --json
 node reconcile.mjs status --json
 ```
+
+For a Pi runtime update, read `docs/pi-compatibility.md` (or `<agent-dir>/docs/pi-compatibility.md` outside the repository) and follow its upgrade procedure. Report version drift separately from API compatibility. Do not advance `manifest.json:piVersion`, install a new live runtime, or sync managed resources without approval. Baseline/latest CI results are compatibility evidence, not automatic upgrade authorization.
 
 Read the JSON output:
 1. Check `upstreams`: Identify if any source has `status === "UPDATE_AVAILABLE"`.
@@ -35,12 +40,12 @@ Read the JSON output:
 
 ### Step 2: Report to the User
 
-- If all upstreams are **UP_TO_DATE**:
+- If all Skill upstreams are **UP_TO_DATE** and there is no Pi update or compatibility failure:
   - Inform the user that all upstream skills and local overrides are fully aligned.
   - Summarize the active local overrides and custom skills, read from `components.json`: entries under `skills` with `type: "override"` are local overrides, `type: "custom"` are harness-only skills. Read the list from the registry rather than naming it, so the summary cannot drift as overrides are added.
   - Stop here unless the user requests a diff review.
 
-- If updates are available:
+- If Skill or Pi updates are available, or a compatibility check failed:
   - Present a concise, structured briefing:
     - Which upstream has new commits (`pinnedRef` -> `remoteHead`).
     - Which local overrides are affected.

@@ -1,8 +1,12 @@
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
+import { promisify } from "node:util";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { existsSync, readdirSync } from "node:fs";
-import { join } from "node:path";
-import { DynamicBorder, type ExtensionAPI, type ExtensionContext, type Model } from "@earendil-works/pi-coding-agent";
+import { DynamicBorder, getAgentDir, type ExtensionAPI, type ExtensionContext, type Model } from "@earendil-works/pi-coding-agent";
 import { Container, Key, SelectList, Text, type SelectItem } from "@earendil-works/pi-tui";
+
+const runFile = promisify(execFile);
 
 function discoverSpecs(cwd: string): { value: string; label: string; description: string }[] {
   if (!cwd) return [];
@@ -178,6 +182,10 @@ async function showPalette(pi: ExtensionAPI, ctx: ExtensionContext): Promise<voi
   if (selected === "settings") {
     const settingItems: SelectItem[] = [
       { value: "pi-settings", label: "Pi Settings", description: "Insert /settings into editor (press Enter to open overlay)" },
+      { value: "compaction-model", label: "Compaction Model", description: "Choose the global summarization model" },
+      { value: "mcp-key", label: "MCP API Key", description: "Update a key with private masked input" },
+      { value: "mcp", label: "MCP Servers", description: "Open native server manager" },
+      { value: "mcp-setup", label: "MiniMax MCP Setup", description: "Configure Coding Plan MCP" },
       { value: "ccstyle", label: "UI & Style (/ccstyle)", description: "Open Claude Code style config panel" },
       { value: "tools", label: "Tools (/tools)", description: "Open tool enable/disable selector" },
     ];
@@ -186,6 +194,15 @@ async function showPalette(pi: ExtensionAPI, ctx: ExtensionContext): Promise<voi
     if (chosenSetting === "pi-settings") {
       ctx.ui.setEditorText?.("/settings");
       ctx.ui.notify?.("Press Enter to open Pi Settings", "info");
+      return;
+    }
+    if (chosenSetting === "compaction-model") {
+      pi.sendUserMessage("/compaction-model", { expandPromptTemplates: true });
+      return;
+    }
+    if (["mcp-key", "mcp", "mcp-setup"].includes(chosenSetting)) {
+      ctx.ui.setEditorText?.(`/${chosenSetting}`);
+      ctx.ui.notify?.("Press Enter to run the selected MCP command", "info");
       return;
     }
     if (chosenSetting === "ccstyle") {
@@ -416,11 +433,18 @@ async function showPalette(pi: ExtensionAPI, ctx: ExtensionContext): Promise<voi
       // Import the consent helper from the adapter
       try {
         const { authorizeReducer, isReducerAuthorized } = await import("./sol-pi-consent.mjs");
+        const manifestPath = join(getAgentDir(), "manifest.json");
+        const { readFile } = await import("node:fs/promises");
+        const policy = JSON.parse(await readFile(manifestPath, "utf8")).solPi.reducerPolicy;
+        const route = `${policy.provider}/${policy.model}`;
         const sessionId = ctx.sessionManager.getSessionId();
-        if (isReducerAuthorized(sessionId)) {
+        if (isReducerAuthorized(sessionId, route)) {
           ctx.ui.notify?.("Reducer already authorized for this session", "info");
         } else {
-          authorizeReducer(sessionId);
+          const selectedRoute = await ctx.ui.select(`Authorize diagnostic log sharing with ${route}?`, ["Allow", "Cancel"], { signal: ctx.signal, timeout: 60_000 });
+          if (selectedRoute !== "Allow") return;
+          authorizeReducer(sessionId, route);
+          pi.appendEntry("perfect-pi-sol-reducer-authorized", { sessionId, route });
           ctx.ui.notify?.("Reducer authorized for this session", "info");
         }
       } catch {
@@ -459,11 +483,11 @@ async function showPalette(pi: ExtensionAPI, ctx: ExtensionContext): Promise<voi
     }
     if (protoChoice === "clipboard-mockup") {
       try {
-        const agentDir = process.env.PI_CODING_AGENT_DIR || join(process.env.HOME || "", ".pi", "agent");
-        const scriptPath = join(ctx.cwd, "scripts", "clipboard-image.mjs");
-        const fallbackScript = join(agentDir, "scripts", "clipboard-image.mjs");
-        const script = existsSync(scriptPath) ? scriptPath : fallbackScript;
-        execFileSync("node", [script, ".scratch/mockup.png"], { cwd: ctx.cwd, encoding: "utf8" });
+        const extensionDir = dirname(fileURLToPath(import.meta.url));
+        const installedScript = join(extensionDir, "..", "scripts", "clipboard-image.mjs");
+        const sourceScript = join(extensionDir, "..", "..", "scripts", "clipboard-image.mjs");
+        const script = existsSync(installedScript) ? installedScript : sourceScript;
+        await runFile(process.execPath, [script, ".scratch/mockup.png"], { cwd: ctx.cwd, encoding: "utf8", timeout: 35_000, maxBuffer: 1024 * 1024 });
         ctx.ui.notify?.("Saved clipboard image to .scratch/mockup.png", "info");
         pi.sendUserMessage("I copied a UI mockup to .scratch/mockup.png. Please read it and use it as visual reference.", { expandPromptTemplates: true });
       } catch (err: any) {

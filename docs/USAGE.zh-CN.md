@@ -138,7 +138,7 @@ Ctrl+Shift+P
 | Model | 切换模型 |
 | Thinking | 调整 thinking budget |
 | Tools | 手动启用或禁用工具 |
-| Settings | 打开 Pi settings 或相关扩展设置 |
+| Settings | 打开配置子菜单（Pi settings、Compaction Model、MCP Key、MiniMax Setup、MCP Servers、CCStyle、Tools） |
 
 按 `Esc` 取消不会发送半成品请求。Spec、Tickets 和 Implement spec 的空输入表示“使用当前会话内容”。
 
@@ -343,6 +343,26 @@ node scripts/tmux-tickets.mjs kill --feature team-invites
 
 Pi 的 `subagent` 是阻塞调用。只有 `research` 是真正的后台研究；实现工作不会伪装成 detached background job。
 
+### 4.8 原型与视觉概念探索 (Prototype)
+
+当需要为设计或架构决策建立快速验证物时使用：
+
+```text
+/skill:prototype
+```
+
+流程会自动根据问题切入两个子分支：
+- **逻辑/状态原型 (LOGIC)**：单文件 HTML，带自由调试按钮和分步导引，便于验证复杂状态机；
+- **界面原型 (UI)**：同一路由下的多套结构性变体（默认 3 套），通过屏幕底部浮动条快捷切换（`?variant=`）。
+
+#### 无需生图 API 的人机协同生图 (Web Image Handoff)
+
+UI 原型阶段如需高保真概念图辅助设计：
+1. **Pi 负责完整设计构思**：输出包含目标视口、功能分区、字体层次、配色约束和负向提示词的完整提示词，不因为人机交接而简化或改写。
+2. **交互面板挂起等待 (`image_handoff`)**：Pi 弹出提示词面板并保持等待，用户可直接复制提示词前往 ChatGPT / Midjourney 等网页生成图片。
+3. **视觉附件回流**：用户在同一交互面板中选择 **Import Clipboard Image**（自动通过受管脚本提取剪贴板 PNG）或 **Import Image File**（输入本地路径）；图片将作为多模态视觉附件进入上下文，驱动后续代码编写。
+4. **验证标记隔离**：仅在显式工作流测试时允许加入测试识别标记（如右上角小圆点），真实业务设计提示词不添加测试标记。
+
 ## 5. Code Review
 
 ### 工作树审查
@@ -437,11 +457,12 @@ Not applicable
 
 支持的 capability：
 
-| Capability | 工具用途 |
+| Capability | 对应的工具与能力 |
 | --- | --- |
-| `web` | `web_search`、`source_check`、`fetch_content` |
-| `browser` | `agent_browser`、browser automation 和 advanced browser tools |
-| `mcp` | MCP server/tool 调用 |
+| `code` | 原生 `codemode`：支持多工具并行调用与大规模结果过滤 |
+| `web` | `web_search`、`source_check`、`fetch_content`、`get_search_content` |
+| `browser` | `agent_browser`、browser automation 和高级浏览器工具 |
+| `mcp` | 原生 `codemode`、`tool_search` 及已连接服务器的 resource 工具 |
 | `lsp` | diagnostics 和 source fixes |
 | `process` | dev server、watcher、日志和进程控制 |
 | `research` | 后台研究并写入 Markdown findings |
@@ -453,13 +474,71 @@ Not applicable
 ```
 
 注意：
-
 - capability activation 不会自动获得生产写入权限。
 - `--tools`、`--exclude-tools` 等显式 CLI 限制优先级最高。
 - capability 启用后，下一次模型请求才能稳定看到新增 tool schema。
-- 浏览器运行时要求 `agent-browser` 在 `PATH` 中。
+- 工具输出采用原生 `structuredContent`，便于代码模式精确消费。
 
-## 8. Subagent 模型控制
+## 8. 自定义全局压缩模型与 SoL-Pi 生命周期保障
+
+### 独立全局压缩模型 (Compaction Model)
+
+Perfect Pi 支持为上下文压缩配置专用模型，默认使用 `cpa/gemini-3.8-flash-high`：
+- **统一拦截**：统一覆盖手动 `/compact`、达到阈值的容量压缩 (`threshold`)、上下文超限溢出恢复 (`overflow`) 以及 SoL-Pi 在线压缩 (`OCC`)。
+- **保护当前会话模型**：压缩过程不改变正在进行的主对话模型与 thinking budget。
+- **平滑回退**：当配置的压缩模型不可用、无凭据或网络报错时，发出警告并自动回退到当前主对话模型；若为用户主动按 `Esc` 取消，则直接中止，绝不发起意外回退请求。
+- **设置入口**：
+  ```text
+  /compaction-model                                    # 交互式选择已授权模型
+  /compaction-model cpa/gemini-3.8-flash-high           # 设定指定路由
+  /compaction-model status                             # 查看当前生效的压缩模型
+  ```
+  在命令面板中亦可通过 `Ctrl+Shift+P -> Settings -> Compaction Model` 打开。配置持久化在全局 `settings.json` 的 `perfectPiCompaction` 中，项目配置无法覆盖，后续环境同步会自动保留用户偏好。
+
+### SoL-Pi 诊断日志授权与生命周期防死锁
+
+SoL-Pi 日志 reducer 采用会话级原子授权机制：
+- 仅在真正需要远程调用时请求授权，短命令或无诊断输出绝不弹窗打扰；
+- 并行工具调用共享同一个带超时（60s）和可取消的确认选择框，按 `Esc` 或超时视为“未决定”而非拒绝，彻底杜绝选择器孤儿导致的死锁；
+- 授权决策严格按 `sessionId` + `route` 隔离，fork 分支与新会话绝不越权继承；
+- 远程调用前预先占位记录 attempt，即使网络异常失败也严格消耗 20 次预算上限，保障会话安全边界。
+
+## 9. MCP 协议接入与 MiniMax 私有凭据管理
+
+### MiniMax Coding Plan MCP
+
+通过官方 stdio 服务接入 MiniMax 网络搜索与图片理解能力：
+- 官方入口：`uvx minimax-coding-plan-mcp -y`
+- 暴露工具：`mcp__MiniMax__web_search`、`mcp__MiniMax__understand_image`
+
+### 私密凭据录入与安全存储 (`/mcp-key` & `/mcp-setup`)
+
+为了杜绝 API Key 被意外提交到 Git、写入日志或传入命令参数，Perfect Pi 提供了私密遮蔽录入机制：
+1. **首次配置**：
+   ```text
+   /mcp-setup
+   ```
+   选择服务区域后，在遮蔽弹窗中输入 Key。
+2. **Key 更新与管理**：
+   ```text
+   /mcp-key MiniMax
+   ```
+3. **安全存储机制**：
+   - Key 仅保存在 `~/.pi/agent/mcp-private/secrets.json`，目录权限严格锁定为 `0700`，文件权限锁定为 `0600`。
+   - `mcp.json` 中配置的 stdio 包装脚本 (`mcp-launch.mjs`) 仅在拉起子进程时将 Key 注入其环境变量，并对子进程的标准输出/错误流进行流式脱敏，参数中绝不含有 Key。
+   - 包装器退出时自动清理子进程组，杜绝后台僵尸进程。
+
+### 受信任项目的 MCP 覆盖 (`/mcp-project`)
+
+项目可在 `.pi/mcp.json` 中配置只读覆盖（仅允许修改 `enabled` 和 `exposure`）：
+```text
+/mcp-project MiniMax on codemode       # 仅在代码模式中搜索调用（推荐）
+/mcp-project MiniMax on deferred       # 通过 tool_search 延迟发现
+/mcp-project MiniMax off hidden        # 在当前项目中禁用
+```
+项目配置文件内绝不包含任何全局凭据。未受信任的项目无法写入或生效该覆盖。
+
+## 10. Subagent 模型控制
 
 Perfect Pi 在 `subagent` 和 `research` 工具执行前检查模型：
 
@@ -493,7 +572,7 @@ Perfect Pi 在 `subagent` 和 `research` 工具执行前检查模型：
 
 授权只作用于当前 Pi 会话。它不会写入 provider credentials，也不会修改全局模型默认值。若想让子代理使用另一个模型，应由用户先执行授权命令，再让 Pi 重试被阻止的调用。
 
-## 9. Research、浏览器和开发服务器
+## 11. Research、浏览器和开发服务器
 
 ### Web research
 
@@ -521,7 +600,7 @@ Perfect Pi 在 `subagent` 和 `research` 工具执行前检查模型：
 
 Pi 应在启动前检查是否已有同名进程，并关注 `ready`、`listening`、`EADDRINUSE` 和 `Error:` 等日志信号。
 
-## 9. Upstream skill 维护
+## 12. Upstream skill 维护
 
 检查 upstream：
 
@@ -563,7 +642,27 @@ node reconcile.mjs 3way-test grilling --upstream-ref <commit> --offline
 
 维护 skill 会先报告更新，再等待选择 three-way merge、upstream-only 或查看细节。外部 push、PR 和远程 issue 写入仍需明确授权。
 
-## 10. 诊断和状态检查
+## 13. Pi 运行时持续兼容与升级机制 (CI Canary)
+
+Perfect Pi 将 Pi 的长期版本更新作为持续兼容性工程管理：
+- **版本发现**：
+  ```bash
+  node scripts/check-pi-updates.mjs
+  ```
+  查询 npm 官方发布的最新稳定版本，分类区分 patch / minor / major。仅提供决策依据，绝不自动修改本地版本锁定。
+- **运行时 API 契约与全量扩展加载验证**：
+  ```bash
+  node scripts/check-pi-compatibility.mjs
+  ```
+  验证当前宿主 Pi 的公共 API、`FileSettingsStorage.withLock` 内部存储桥接，以及所有受管 TypeScript 扩展的加载情况。版本漂移与 API 兼容性解耦报告。
+- **SoL-Pi 契约验证**：
+  ```bash
+  node scripts/check-sol-pi-contract.mjs --json
+  ```
+- **每日只读 CI Canary** (`.github/workflows/pi-compatibility.yml`)：
+  在独立 GitHub Actions Runner 中以矩阵方式并行测试 `baseline`（manifest 锁定版本）和 `latest`（npm 最新版），运行全量回归和契约验证。权限严格保持只读，不自动升级本地或远端环境。
+
+## 14. 诊断、度量和状态检查
 
 检查本地同步状态：
 
@@ -580,11 +679,12 @@ node doctor.mjs --json
 node skill-audit.mjs
 ```
 
-检查启动 context 和工具 schema：
+检查启动 context 和真实 CLI 工具 schema：
 
 ```bash
 node measure.mjs /path/to/project
 ```
+`measure.mjs` 基于 CLI 实际发出的系统消息中的 `toolsAdded` 声明进行精确 schema token 估算，不再因独立的 SDK 会话而漏算原生工具。
 
 固定模型做测量：
 
@@ -600,13 +700,14 @@ PI_EVAL_MODEL=cpa/gemini-3.8-flash-high \
   node route-smoke.mjs /tmp/route-results.json
 ```
 
-检查保存过的 Pi JSONL session：
+分析会话用量与 SoL 效率报告（覆盖 assistant、工具调用、压缩、branch summary 和 cache warm）：
 
 ```bash
 node observe.mjs /path/to/pi-session.jsonl
+node observe.mjs /path/to/pi-session.jsonl --summary
 ```
 
-## 11. 常见问题
+## 15. 常见问题
 
 ### `doctor` 显示 `DRIFTED`
 
@@ -698,7 +799,7 @@ node doctor.mjs
 /verify
 ```
 
-## 12. 一条完整示例
+## 16. 一条完整示例
 
 假设要增加一个需要前后端配合的团队邀请功能：
 
@@ -717,7 +818,7 @@ node doctor.mjs
 
 对小改动不要强行走完整 ticket ladder。对跨会话、多模块、需要恢复和并行 worktree 的工作，才使用 spec、tickets 和 implement-spec。
 
-## 13. 当前能力边界
+## 17. 当前能力边界
 
 Perfect Pi 已验证：
 

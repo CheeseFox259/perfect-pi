@@ -56,6 +56,16 @@ node reconcile.mjs 3way-test grilling --upstream-ref <commit> # Test the actual 
 node reconcile.mjs status --offline --json # Check registry pin alignment without network
 ```
 
+## Runtime Updates
+
+Pi updates are a continuing compatibility requirement. A daily, read-only CI canary tests the pinned runtime and npm's latest stable version with the same SoL-Pi pin. It never upgrades a user environment or advances pins automatically. See [runtime compatibility and upgrade policy](docs/pi-compatibility.md).
+
+```bash
+node scripts/check-pi-updates.mjs
+node scripts/check-pi-compatibility.mjs
+node scripts/check-sol-pi-contract.mjs --json
+```
+
 ## Context and runtime measurements
 
 ```bash
@@ -76,7 +86,11 @@ node route-smoke.mjs /tmp/route-results.json
 - `pi-web-access` provides web research and fetch; external-system access comes from the built-in `mcp` extension and the configured MCP servers, reached after the `mcp` capability group is enabled.
 - `pi-agent-browser-native` exposes browser verification after enabling the `browser` capability, with additional advanced tools loaded through its native loader. Install upstream `agent-browser` separately and keep it on `PATH`.
 - SoL-Pi is pinned as a Git package and loaded once through a Perfect Pi adapter: guarded edit/write validation, exact observation recall, and evidence-checked log reduction are enabled; native online compaction is project opt-in. Reducer calls use `cpa/gemini-3.8-flash-high`, with a 20-request session limit and tool-result usage accounting. See [SoL-Pi configuration, evidence policy, and rollback](docs/sol-pi.md).
+- Native `codemode`/`tool_search` integrate batching and MCP discovery; global key entry uses a masked dialog, while trusted project MCP profiles contain no credentials. Prototype image generation waits for a user-returned clipboard/file image instead of requiring an image API. See [native workflow configuration and safety](docs/native-workflows.md).
+- Compaction uses a separate global model, defaulting to `cpa/gemini-3.8-flash-high`. Set it through Palette -> Settings -> Compaction Model or `/compaction-model provider/modelId`; `/compaction-model status` shows the route. It applies to manual, automatic and OCC compaction without switching the conversation model. Setup preserves your selection. See [configuration and fallback behavior](docs/pi-compatibility.md#compaction-model).
 - LSP, managed processes, deterministic guardrails, and `pi-cc-extensions` support verification and UX.
+
+`observe.mjs` aggregates all native usage kinds without summing nested usage twice; `requests` remains assistant responses. `measure.mjs` estimates schemas from the actual CLI declarations rather than a different SDK loadout. Neither command proves new tools reduce cost without a comparable workload.
 
 ## Verification tiers
 

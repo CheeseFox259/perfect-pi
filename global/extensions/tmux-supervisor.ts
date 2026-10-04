@@ -91,6 +91,7 @@ export default function tmuxSupervisorExtension(pi: ExtensionAPI): void {
       wait: Type.Optional(Type.Boolean({ description: "Whether to wait until all dispatched tickets finish" })),
       timeoutSeconds: Type.Optional(Type.Number({ description: "Timeout in seconds when waiting (default: 600)" })),
     }),
+    outputSchema: Type.Record(Type.String(), Type.Unknown()),
     executionMode: "sequential",
     async execute(_id, params, _signal, _onUpdate, ctx: ExtensionContext) {
       const engine = await getEngine();
@@ -99,23 +100,11 @@ export default function tmuxSupervisorExtension(pi: ExtensionAPI): void {
       if (params.action === "frontier") {
         const all = engine.findFeatureTickets(repoRoot, params.feature);
         const frontier = engine.computeFrontier(all);
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({
-                feature: params.feature,
-                totalTickets: all.length,
-                frontierTickets: frontier.map((t: any) => ({
-                  id: t.id,
-                  title: t.title,
-                  blockedBy: t.blockedBy,
-                  branch: t.branch,
-                })),
-              }, null, 2),
-            },
-          ],
+        const data = {
+          feature: params.feature, totalTickets: all.length,
+          frontierTickets: frontier.map((t: any) => ({ id: t.id, title: t.title, blockedBy: t.blockedBy, branch: t.branch })),
         };
+        return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }], structuredContent: data };
       }
 
       if (params.action === "dispatch") {
@@ -130,14 +119,14 @@ export default function tmuxSupervisorExtension(pi: ExtensionAPI): void {
           timeoutMs: (params.timeoutSeconds ?? 600) * 1000,
         });
         return {
-          content: [{ type: "text", text: JSON.stringify(res, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(res, null, 2) }], structuredContent: res,
         };
       }
 
       if (params.action === "status") {
         const status = engine.getRunStatus(repoRoot, params.feature);
         return {
-          content: [{ type: "text", text: JSON.stringify(status, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(status, null, 2) }], structuredContent: status,
         };
       }
 
@@ -146,30 +135,25 @@ export default function tmuxSupervisorExtension(pi: ExtensionAPI): void {
         if (!status.exists || status.tickets.length === 0) {
           return {
             content: [{ type: "text", text: JSON.stringify({ error: "No active run found to wait for." }) }],
+            structuredContent: { error: "No active run found to wait for." }, isError: true,
           };
         }
         const ids = status.tickets.map((t: any) => t.ticketId);
         const waitResult = await engine.waitForRun(status.runDir, ids, (params.timeoutSeconds ?? 600) * 1000);
         return {
-          content: [{ type: "text", text: JSON.stringify(waitResult, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(waitResult, null, 2) }], structuredContent: waitResult,
         };
       }
 
       if (params.action === "kill") {
         const sName = params.sessionName || `pi-spec-${params.feature}`;
         const killed = engine.killTmuxSession(sName);
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({ sessionName: sName, killed }),
-            },
-          ],
-        };
+        return { content: [{ type: "text", text: JSON.stringify({ sessionName: sName, killed }) }], structuredContent: { sessionName: sName, killed } };
       }
 
       return {
         content: [{ type: "text", text: JSON.stringify({ error: `Unknown action: ${params.action}` }) }],
+        structuredContent: { error: `Unknown action: ${params.action}` }, isError: true,
       };
     },
   });

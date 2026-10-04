@@ -17,7 +17,8 @@ import { Container, type SettingItem, SettingsList } from "@earendil-works/pi-tu
 const CAPABILITIES = {
 	web: ["web_search", "source_check", "fetch_content", "get_search_content"],
 	browser: ["agent_browser", "agent_browser_code", "agent_browser_tools"],
-	mcp: ["mcp", "mcpScript"],
+	code: ["codemode"],
+	mcp: ["codemode", "tool_search", "list_mcp_resources", "list_mcp_resource_templates", "read_mcp_resource"],
 	lsp: ["lsp_diagnostics", "lsp_fix"],
 	process: ["process"],
 	research: ["research"],
@@ -28,6 +29,7 @@ const capabilityNames = Object.keys(CAPABILITIES) as (keyof typeof CAPABILITIES)
 // State persisted to session
 interface ToolsState {
 	enabledTools: string[];
+	defaultNativeTools?: string[];
 }
 
 export default function toolsExtension(pi: ExtensionAPI) {
@@ -35,12 +37,14 @@ export default function toolsExtension(pi: ExtensionAPI) {
 	let enabledTools: Set<string> = new Set();
 	let allTools: ToolInfo[] = [];
 	let cliAllowedTools: Set<string> | undefined;
+	let defaultNativeTools: string[] = [];
 	const allowed = (name: string) => !cliAllowedTools || cliAllowedTools.has(name);
 
 	// Persist current state
 	function persistState() {
 		pi.appendEntry<ToolsState>("tools-config", {
 			enabledTools: Array.from(enabledTools),
+			defaultNativeTools,
 		});
 	}
 
@@ -57,12 +61,14 @@ export default function toolsExtension(pi: ExtensionAPI) {
 		// Get entries in current branch only
 		const branchEntries = ctx.sessionManager.getBranch();
 		let savedTools: string[] | undefined;
+		let savedNativeDefaults: string[] | undefined;
 
 		for (const entry of branchEntries) {
 			if (entry.type === "custom" && entry.customType === "tools-config") {
 				const data = entry.data as ToolsState | undefined;
 				if (data?.enabledTools) {
 					savedTools = data.enabledTools;
+					savedNativeDefaults = data.defaultNativeTools;
 				}
 			}
 		}
@@ -71,14 +77,19 @@ export default function toolsExtension(pi: ExtensionAPI) {
 			// Restore saved tool selection (filter to only tools that still exist)
 			const allToolNames = allTools.map((t) => t.name);
 			enabledTools = new Set(savedTools.filter((t: string) => allToolNames.includes(t)));
+			if (Array.isArray(savedNativeDefaults)) {
+				for (const name of defaultNativeTools) {
+					if (!savedNativeDefaults.includes(name) && allowed(name)) enabledTools.add(name);
+				}
+			}
 			for (const tool of allTools) {
 				if (tool.exposure === "hidden") continue;
-				if (["obs_recall", "update_plan"].includes(tool.name) && allowed(tool.name)) enabledTools.add(tool.name);
+				if (["obs_recall", "update_plan", "sol_phase"].includes(tool.name) && allowed(tool.name)) enabledTools.add(tool.name);
 			}
 			applyTools();
 		} else {
 			// Without saved state use compact defaults, unless CLI tools were explicit.
-			enabledTools = new Set(pi.getActiveTools().filter((name) => cliAllowedTools || !optionalTools.has(name)));
+			enabledTools = new Set(pi.getActiveTools().filter((name) => cliAllowedTools || name === "codemode" || name === "tool_search" || !optionalTools.has(name)));
 			applyTools();
 		}
 	}
@@ -86,11 +97,15 @@ export default function toolsExtension(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "capabilities",
 		label: "Capabilities",
-		description: "Enable optional Pi tools before using them: web, browser, mcp, lsp, process, research. Empty input lists availability.",
+		description: "Enable optional Pi tools before using them: code, web, browser, mcp, lsp, process, research. Empty input lists availability.",
 		promptGuidelines: ["If a skill needs an inactive tool, enable its group with capabilities, then use it in a subsequent call. Tool activation does not grant permission for external writes."],
 		parameters: Type.Object({
 			enable: Type.Optional(Type.Array(Type.Union(capabilityNames.map((name) => Type.Literal(name))))),
 		}),
+		outputSchema: Type.Record(Type.String(), Type.Object({
+			active: Type.Array(Type.String()), available: Type.Array(Type.String()),
+			excludedByCli: Type.Array(Type.String()), missing: Type.Array(Type.String()),
+		})),
 		executionMode: "sequential",
 		async execute(_id, params) {
 			const registered = new Set(pi.getAllTools().map((tool) => tool.name));
@@ -110,7 +125,7 @@ export default function toolsExtension(pi: ExtensionAPI) {
 				excludedByCli: CAPABILITIES[group].filter((name) => registered.has(name) && !allowed(name)),
 				missing: CAPABILITIES[group].filter((name) => !registered.has(name)),
 			}]));
-			return { content: [{ type: "text", text: JSON.stringify(groups) }], details: groups };
+			return { content: [{ type: "text", text: JSON.stringify(groups) }], details: groups, structuredContent: groups };
 		},
 	});
 
@@ -191,9 +206,9 @@ export default function toolsExtension(pi: ExtensionAPI) {
 		// The runtime has already applied CLI allow/deny lists at this point.
 		const args = process.argv.slice(0, process.argv.indexOf("--") < 0 ? undefined : process.argv.indexOf("--"));
 		const explicit = args.some((arg) =>
-			/^(--tools|--exclude-tools|--no-tools|--no-builtin-tools)(=|$)/.test(arg)
-			|| ["-t", "-xt", "-nt", "-nbt"].includes(arg));
+			/^(--tools|--exclude-tools|--no-tools|--no-builtin-tools|-t|-xt|-nt|-nbt)(=|$)/.test(arg));
 		cliAllowedTools = explicit ? new Set(pi.getActiveTools()) : undefined;
+		defaultNativeTools = pi.getActiveTools().filter(name => ["codemode", "tool_search"].includes(name));
 		restoreFromBranch(ctx);
 	});
 

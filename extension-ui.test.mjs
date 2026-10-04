@@ -204,6 +204,20 @@ test("palette model, thinking and settings submenus can be cancelled", async () 
   assert.deepEqual(ui.messages, []);
 });
 
+test("palette MCP settings prepares extension commands instead of queuing them", async () => {
+  for (const [index, command] of [[2, "/mcp-key"], [3, "/mcp"], [4, "/mcp-setup"]]) {
+    const ui = uiContext({ scripts: [choosePalette(14), [...Array(index).fill(key.down), key.enter]] });
+    await runPalette(ui);
+    assert.deepEqual(ui.messages, []); assert.equal(ui.ctx.ui.getEditorText(), command);
+  }
+});
+
+test("palette settings opens global compaction model command", async () => {
+  const ui = uiContext({ scripts: [choosePalette(14), [key.down, key.enter]] });
+  await runPalette(ui);
+  assert.deepEqual(ui.messages, [{ text: "/compaction-model", options: { expandPromptTemplates: true } }]);
+});
+
 test("question selection, custom response, amendment and cancellation", async () => {
   for (const [script, answer, wasCustom] of [
     [[key.enter], "Small", false],

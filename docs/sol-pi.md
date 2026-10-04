@@ -18,12 +18,12 @@ The managed source is `global/sol-pi.json`, synchronized to `~/.pi/agent/sol-pi.
 | --- | --- | --- |
 | Action Fusion | Enabled | edit/write accept optional `then_run`; commands execute through Pi's guarded nested bash pipeline |
 | ObservationPack | Enabled | Large successful text results become handles after two full sends; `obs_recall` returns exact pages |
-| Evidence-Preserving Reducer | Enabled with **session consent** | Authorized route locked to `manifest.json:solPi.reducerPolicy`; first use prompts the user via TUI confirm (or pre-authorize from Ctrl+Shift+P → SoL-Pi → Authorize reducer); consent does NOT inherit to subagents or new sessions; capped at 20 reqs/session |
+| Evidence-Preserving Reducer | Enabled with **session consent** | Authorization is scoped to session ID and approved route. Only eligible diagnostic reductions prompt; Allow/Deny survives reload and same-session resume, Escape/timeouts remain undecided, and fork/new sessions require fresh consent. Concurrent requests share one cancellable selector. Requests are reserved before dispatch, including failed requests, with a 20-request session limit |
 | Online Context Compact | Disabled | Project opt-in via `sol-pi.json`; when enabled, uses upstream SoL-Pi's economic model with `update_plan` step boundaries. Workflow-Aware Compaction (below) describes the preferred architecture for phase-boundary triggers when Matt Pocock skills are active |
 
 Run `/sol-pi` to see the effective configuration path, feature flags, pinned source, and approved reducer route.
 Run `node doctor.mjs` to verify the managed package HEAD, contract compatibility, reducer model availability, and runtime versions.
-Run `node scripts/check-sol-pi-contract.mjs` to audit the 7 required modules and 11 exported function signatures against upstream.
+Run `node scripts/check-sol-pi-contract.mjs` to check the required modules and exported helper types against the installed fork. This is a loading/export check, not verification of every signature or runtime behavior. Setup, doctor, checker and observe share the portable runtime resolver, including `PI_GLOBAL_NODE_MODULES`.
 Run `node observe.mjs <session.jsonl> --summary` to generate the SoL efficiency and token avoidance report.
 
 ## Guarded Fusion
@@ -40,7 +40,7 @@ The user authorized default remote reduction of eligible diagnostic logs. This i
 
 The reducer route is fixed to `cpa/gemini-3.8-flash-high`. A project file cannot silently change it to an expensive or unapproved provider. Provider URLs and credentials stay in Pi's private configuration. If the route is unavailable, reduction fails, a receipt is invalid, or the request budget is exhausted, the original log is retained.
 
-The adapter permits at most 20 reducer requests per session, persisted across resume and reload. The source length, output token cap, and timeout are inherited from the pinned upstream implementation. Reducer usage is included even when a response is rejected and the log falls back. Nested fused validation is reduced once, not again at its parent edit/write result.
+The adapter permits at most 20 reducer requests per session, persisted across resume and reload. It records an attempt before dispatch; exceptions and cancellations after dispatch still consume a slot. Explicit Allow and Deny decisions include session ID and approved route; inherited fork entries are not authorization. The palette persists the same decision. Legacy grants from an ancestor or another route cannot be reused. The source length, output token cap, and network timeout are inherited from the pinned upstream implementation. Reducer usage is included even when a response is rejected and the log falls back. Nested fused validation is reduced once, not again at its parent edit/write result.
 
 Receipts verify quotations against archived content. They do not prove diagnostic completeness; diagnosis and final pass/fail decisions still belong to the primary agent.
 
@@ -65,11 +65,15 @@ To try online compaction in a trusted project, set `onlineContextCompact` to tru
 
 `update_plan` is session-local execution progress; it is not the issue tracker and does not change triage roles, claims, or verified ticket completion. Keep step IDs stable and register unfinished steps before completing them. Use it during execution, not to force compaction during unresolved grilling or spec/ticket authoring.
 
+When OCC is enabled, `sol_phase` records explicit boundaries (`begin`, `complete`, `clear`, `status`); the equivalent user command is `/sol-phase`. Example: `/sol-phase begin to-spec feature-name`, then `/sol-phase complete` only after deliverables and reasoning are finished. Reading a recognized skill or invoking its slash command begins an in-progress phase. Phase state survives same-session resume/reload, but not a fork. Before unrelated work, clear or begin a new phase. No active or completed phase means OCC stays suppressed; native capacity and manual compaction remain available.
+
+Artifact gates require actual files for the selected feature, not merely a `.scratch` directory or another feature's old spec. The `implement` gate checks tracked and untracked Git changes. Untrusted projects cannot override the managed phase contract; invalid trusted overrides fail closed. Explicit completion attests that primary reasoning is no longer needed; the runtime does not prove semantic independence. It enforces a minimum 2,000-token estimated net reduction in addition to the fork's economic model.
+
 ## Workflow-Aware Compaction (Runtime-Enforced Contract)
 
 The table and gates below are actively enforced by `global/extensions/sol-pi.ts` consuming the machine-readable contract [`skills/ask-matt/phase-contract.json`](../skills/ask-matt/phase-contract.json).
 
-- **Proactive / Economic Compaction (OCC)**: Governed at turn boundaries. When reasoning skills (`grilling`, `tdd`, `diagnosing-bugs`) are active or durability deliverables are not yet on disk, OCC evaluation is suppressed, preventing premature turn abortion and context loss.
+- **Proactive / Economic Compaction (OCC)**: Requires an explicitly completed eligible phase, verified durability and at least 2,000 estimated net tokens saved before upstream economic evaluation. A tool turn is not itself a workflow-completion boundary. Missing/invalid contract, unknown phase, and in-progress reasoning fail closed.
 - **Context Capacity Compactions (`threshold` and `overflow`)**: Normal, necessary compactions triggered when context limits are reached. They execute directly and silently without veto, warning, or user interruption.
 - **Manual `/compact`**: Commands from the user or the Ctrl+Shift+P palette execute immediately under user authority.
 
@@ -133,6 +137,18 @@ SoL-Pi adapter tests require its pinned package installed through setup. They us
 ## Rollback
 
 Set all four feature flags to false in the effective config, then `/reload` or restart Pi. Global changes must also update `global/sol-pi.json` in the repository or the next setup will restore the managed profile. Preserve archives and session logs so old evidence remains available. Removing the adapter without disabling its managed registration is temporary: setup restores owned resources.
+
+## Measurement and Clipboard Safety
+
+`observe.mjs` reads the observation-pack ledger and deduplicates archive IDs. Recall receipts and tool calls are alternative sources, not added together. Reducer requests use pre-dispatch attempts, while applied/fallback outcomes use the upstream journal; response usage is counted once, including rejected responses. Counts are operational evidence, not proof of monetary savings.
+
+The palette uses only the clipboard helper beside its own managed extension resources, never a script chosen from the current repository. It runs outside the TUI event loop with a bounded deadline. Native paths are passed as data, PNG signatures are checked, and a unique temporary file is renamed to the destination only after successful extraction. A failed extraction preserves any existing destination. Native Linux and Windows behavior requires platform verification in addition to mocked command tests.
+
+## Compaction Model
+
+All manual, capacity/overflow and SoL-Pi OCC compactions use the global `settings.json:perfectPiCompaction` preference, defaulting to `cpa/gemini-3.8-flash-high`. Use Palette -> Settings -> Compaction Model, `/compaction-model`, or `/compaction-model provider/modelId`. `/compaction-model status` shows the route. This is a user preference, initialized by `manifest.json:defaultSettings` and preserved by setup; project configuration cannot override it.
+
+The adapter retains Pi's native summary, split-turn, tracked-file, usage and kept-entry behavior. A failed or unavailable compaction model warns and falls back to the current conversation model; cancellation never falls back. Compaction model selection does not grant reducer consent, consume the reducer budget, change phase gates, or change the current conversation model. Selecting a provider permits that provider to receive conversation content for summarization. See [runtime compatibility policy](pi-compatibility.md).
 
 ## Sources
 

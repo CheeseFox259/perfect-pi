@@ -14,6 +14,13 @@
     },
     "enableSkillCommands": true
   },
+  "defaultSettings": {
+    "defaultTools": ["+codemode"],
+    "perfectPiCompaction": {
+      "provider": "cpa",
+      "model": "gemini-3.8-flash-high"
+    }
+  },
   "solPi": {
     "source": "git:github.com/CheeseFox259/SoL-Pi@93fd67a833da1b6236cf2582f02f7a6454d6d941",
     "pinnedRef": "93fd67a833da1b6236cf2582f02f7a6454d6d941",

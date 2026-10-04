@@ -46,9 +46,10 @@ In Pi, the native `subagent` tool is blocking, returning only when its tasks com
 In Perfect Pi, these boundaries are formally declared in [`phase-contract.json`](phase-contract.json) and enforced by the harness adapter (`global/extensions/sol-pi.ts`):
 
 1. **Proactive Compaction Governance:** The Phase Contract specifically manages proactive, opportunistic compactions (such as SoL-Pi Online Context Compact) before context is full. When a skill such as `/skill:grill-me`, `/skill:tdd`, or `/skill:diagnosing-bugs` is active, the adapter suppresses proactive OCC evaluation at turn boundaries (`allowMidPhaseCompact: false`), preventing early turn abortion and context loss.
-2. **Durability Gate (Gate A):** Proactive checkpoint compaction after `/skill:to-spec` or `/skill:to-tickets` is permitted only after durable deliverables (e.g. `spec.md`, tickets under `.scratch/*/issues/`) are verified on disk.
-3. **Context Capacity Compactions:** When the context window reaches capacity (Pi's native `threshold` or `overflow`), compaction is normal and necessary; it executes directly and silently without user interruption or warnings to keep the session alive.
-4. **Manual Authority:** The user can always manually issue `/compact` or use Ctrl+Shift+P (`SoL-Pi → Compact now`); manual user intent is never blocked by automatic gates.
+2. **Durability Gate (Gate A):** Use `sol_phase begin` with the current feature, and `sol_phase complete` only after reasoning and deliverables are finished. The adapter verifies actual matching files for that feature, not merely `.scratch` existence; the implementation gate requires a clean Git tree. Missing feature scope fails closed. `/sol-phase` offers equivalent manual commands.
+3. **Boundary State:** Skill invocation or reading a recognized `SKILL.md` begins an in-progress phase. Completing a tool turn does not finish that phase. The phase is persisted for same-session resume/reload, not inherited across forks, and must be cleared or replaced before unrelated work. OCC requires a completed eligible boundary and at least 2,000 estimated net tokens saved before upstream economic evaluation. No recognized boundary means no proactive compaction. Explicit completion is an agent/user attestation of semantic readiness, not a runtime proof.
+4. **Context Capacity Compactions:** When the context window reaches capacity (Pi's native `threshold` or `overflow`), compaction is normal and necessary; it executes directly and silently without user interruption or warnings to keep the session alive.
+5. **Manual Authority:** The user can always manually issue `/compact` or use Ctrl+Shift+P (`SoL-Pi → Compact now`); manual user intent is never blocked by automatic gates.
 
 ## Primary and secondary sources
 

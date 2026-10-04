@@ -7,7 +7,7 @@ let piEntry;
 try { piEntry = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent")); }
 catch { piEntry = join(execFileSync("npm", ["root", "--global"], { encoding: "utf8" }).trim(), "@earendil-works/pi-coding-agent/dist/index.js"); }
 const { loadExtensions } = await import(pathToFileURL(join(dirname(piEntry), "core/extensions/loader.js")));
-const names = ["read", "bash", "edit", "write", "questionnaire", "subagent", "capabilities", "web_search", "fetch_content", "process", "user_plugin", "obs_recall"];
+const names = ["read", "bash", "edit", "write", "questionnaire", "subagent", "capabilities", "codemode", "tool_search", "web_search", "fetch_content", "process", "user_plugin", "obs_recall"];
 async function fixture(entries = [], initial = names) {
   const loaded = await loadExtensions([join(import.meta.dirname, "global/extensions/tools.ts")], import.meta.dirname);
   assert.deepEqual(loaded.errors, []);
@@ -51,7 +51,7 @@ test("saved manual selection survives startup, removed tools are filtered", asyn
 test("CLI restrictions survive saved state and capability activation", async () => {
   const original = process.argv;
   try {
-    process.argv = [...original, "--tools=read,capabilities"];
+    process.argv = [...original, "-t=read,capabilities"];
     const f = await fixture([{ type: "custom", customType: "tools-config", data: { enabledTools: names } }], ["read", "capabilities"]);
     assert.deepEqual(f.active(), ["read", "capabilities"]);
     const result = await f.enable(["web", "process"]);
@@ -60,6 +60,23 @@ test("CLI restrictions survive saved state and capability activation", async () 
     await f.fire("session_tree");
     assert.deepEqual(f.active(), ["read", "capabilities"]);
   } finally { process.argv = original; }
+});
+
+test("native MCP activation works, reports schemas and persists on the branch", async () => {
+  const f = await fixture([], names.filter(name => !["codemode", "tool_search"].includes(name)));
+  const result = await f.enable(["mcp"]);
+  assert.ok(f.active().includes("codemode")); assert.ok(f.active().includes("tool_search"));
+  assert.deepEqual(result.structuredContent, result.details);
+  await f.fire("session_tree"); assert.ok(f.active().includes("codemode"));
+});
+test("new native defaults are added only when historical default metadata is known", async () => {
+  const f = await fixture([{ type: "custom", customType: "tools-config", data: { enabledTools: ["read"], defaultNativeTools: [] } }]);
+  assert.ok(f.active().includes("codemode")); assert.ok(f.active().includes("tool_search"));
+});
+
+test("explicit native tool disable is respected after branch restore", async () => {
+  const f = await fixture([{ type: "custom", customType: "tools-config", data: { enabledTools: ["read"], defaultNativeTools: ["codemode", "tool_search"] } }]);
+  assert.deepEqual(f.active(), ["read", "obs_recall"]);
 });
 
 test("explicit CLI tool choices are preserved", async () => {

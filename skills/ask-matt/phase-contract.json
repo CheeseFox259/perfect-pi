@@ -31,7 +31,7 @@
       "recommendedBoundaryAction": "compact",
       "rationale": "Once SPEC.md is written and verified, chat rationale is externalized into the durable artifact.",
       "durabilityGate": {
-        "requiredArtifacts": [".scratch/*/spec.md", "docs/**/*.md"],
+        "requiredArtifacts": [".scratch/*/spec.md"],
         "failClosed": true
       },
       "customInstructions": "Preserve the architectural decisions, constraints, and scope boundaries established in SPEC.md. Discard exploratory brainstorming."

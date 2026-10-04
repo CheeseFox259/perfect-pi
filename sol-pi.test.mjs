@@ -20,12 +20,53 @@ const baseConfig = { version: 1, actionFusion: true, observationPack: true, evid
 const textOf = (result) => result.content.filter((block) => block.type === "text").map((block) => block.text).join("\n");
 let scenarioId = 0;
 
-async function scenario(t, { responses, denyBash = false, config = {}, tools, seed, reducerResponse } = {}) {
+/**
+ * Model of pi's extension selector (interactive-mode.js showExtensionSelector):
+ * one slot, a new dialog clears the container without settling the previous promise,
+ * and only opts.signal can settle a dialog without a human. Returns the opened dialogs.
+ */
+function confirmSelector({ answerAfterMs = 0, answer = true } = {}) {
+  const opened = [];
+  let mounted = null;
+  const timer = setInterval(() => {
+    if (!mounted || mounted.settled) return;
+    mounted.settled = true;
+    mounted.resolve(answer === undefined ? undefined : answer ? "Allow" : "Deny");
+    mounted = null;
+  }, answerAfterMs);
+  timer.unref?.();
+  return {
+    opened,
+    stop: () => clearInterval(timer),
+    uiContext: {
+      input: async () => undefined, editor: async () => undefined, custom: async () => undefined,
+      notify: () => {}, onTerminalInput: () => () => {}, setStatus: () => {}, setWorkingMessage: () => {}, setWorkingVisible: () => {},
+      setWorkingIndicator: () => {}, setHiddenThinkingLabel: () => {}, setWidget: () => {}, setFooter: () => {}, setHeader: () => {}, setTitle: () => {},
+      pasteToEditor: () => {}, setEditorText: () => {}, getEditorText: () => "", setEditorComponent: () => {}, getEditorComponent: () => undefined,
+      addAutocompleteProvider: () => {},
+      select: (title, options, opts) => {
+        const dialog = { title, options, opts, settled: false };
+        opened.push(dialog);
+        return new Promise((resolve) => {
+          dialog.resolve = (value) => { dialog.settled = true; resolve(value); };
+          if (mounted && !mounted.settled) dialog.supersededPrevious = mounted;
+          mounted = dialog;
+          opts?.signal?.addEventListener("abort", () => { if (mounted === dialog) mounted = null; dialog.resolve(undefined); }, { once: true });
+        });
+      },
+    },
+  };
+}
+
+async function scenario(t, { responses, denyBash = false, config = {}, tools, seed, reducerResponse, preAuthorize, bindings, beforeRun, timeoutMs = 30_000 } = {}) {
   const cwd = await mkdtemp(join(tmpdir(), "perfect-pi-sol-test-"));
   let session;
   t.after(async () => { session?.dispose(); await rm(cwd, { recursive: true, force: true }); });
   await mkdir(join(cwd, ".pi"));
   await writeFile(join(cwd, ".pi", "sol-pi.json"), JSON.stringify({ ...baseConfig, ...config }));
+  await mkdir(join(cwd, "skills/ask-matt"), { recursive: true });
+  await writeFile(join(cwd, "skills/ask-matt/phase-contract.json"),
+    await readFile(join(import.meta.dirname, "skills/ask-matt/phase-contract.json"), "utf8"));
   if (seed) await seed(cwd);
   const id = ++scenarioId;
   const faux = fauxProvider({ provider: `perfect-sol-${id}`, api: `perfect-sol-api-${id}` });
@@ -64,13 +105,21 @@ async function scenario(t, { responses, denyBash = false, config = {}, tools, se
   const manager = SessionManager.create(cwd, join(cwd, "sessions"));
   ({ session } = await createAgentSession({ cwd, agentDir, tools, model: faux.getModel(), thinkingLevel: "off", resourceLoader: loader, sessionManager: manager, settingsManager }));
   const errors = [];
-  await session.bindExtensions({ onError: (error) => errors.push(error.error instanceof Error ? error.error.message : String(error.error ?? error)) });
+  await session.bindExtensions({ onError: (error) => errors.push(error.error instanceof Error ? error.error.message : String(error.error ?? error)), ...bindings });
   // Pre-authorize reducer for test sessions that enable it, since test fixtures have no TUI confirm.
-  if (config?.evidencePreservingReducer) {
+  // Sessions that exercise the consent prompt itself pass preAuthorize: false and a TUI uiContext.
+  if (preAuthorize ?? Boolean(config?.evidencePreservingReducer)) {
     authorizeReducer(manager.getSessionId());
   }
   if (errors.length > 0) throw new Error(errors.join("; "));
-  await session.prompt("Execute the fixture.", { expandPromptTemplates: false });
+  if (beforeRun) await beforeRun(session);
+  let watchdog;
+  try {
+    await Promise.race([
+      session.prompt("Execute the fixture.", { expandPromptTemplates: false }),
+      new Promise((_, reject) => { watchdog = setTimeout(() => reject(new Error(`run did not settle within ${timeoutMs}ms`)), timeoutMs); }),
+    ]);
+  } finally { clearTimeout(watchdog); }
   if (errors.length > 0) throw new Error(errors.join("; "));
   const results = manager.getBranch().filter((entry) => entry.type === "message" && entry.message.role === "toolResult").map((entry) => entry.message);
   return { cwd, session, manager, results, bashCalls, faux, reducerCalls, loader, context: () => currentContext };
@@ -190,6 +239,58 @@ const logResponses = (count = 1) => [
   ...Array.from({ length: count }, () => fauxAssistantMessage(fauxToolCall("bash", { command: "cat diagnostics.log # npm test" }), { stopReason: "toolUse" })),
   fauxAssistantMessage("fixture complete"),
 ];
+test("parallel tool results share one reducer consent prompt and never orphan the run", async (t) => {
+  const selector = confirmSelector({ answerAfterMs: 5 });
+  t.after(() => selector.stop());
+  const f = await scenario(t, {
+    config: reducerConfig,
+    seed: (cwd) => writeFile(join(cwd, "diagnostics.log"), log), reducerResponse: () => "invalid receipt",
+    preAuthorize: false,
+    bindings: { mode: "tui", uiContext: selector.uiContext },
+    responses: [
+      fauxAssistantMessage([fauxToolCall("bash", { command: "cat diagnostics.log # npm test" }), fauxToolCall("bash", { command: "cat diagnostics.log # npm test" })], { stopReason: "toolUse" }),
+      fauxAssistantMessage("fixture complete"),
+    ],
+    timeoutMs: 10_000,
+  });
+  assert.equal(selector.opened.length, 1, "one prompt per session, however many tool results arrive");
+  assert.equal(selector.opened[0].settled, true);
+  assert.equal(f.results.length, 2, "both parallel tool results complete");
+  assert.equal(f.manager.getBranch().filter((entry) => entry.type === "custom" && entry.customType === "perfect-pi-sol-reducer-authorized").length, 1);
+});
+test("interrupting a pending reducer consent prompt releases the run", async (t) => {
+  const selector = confirmSelector();
+  selector.stop(); // a prompt nobody answers: the user pressed Escape instead
+  t.after(() => selector.stop());
+  const f = await scenario(t, {
+    config: reducerConfig,
+    seed: (cwd) => writeFile(join(cwd, "diagnostics.log"), log), reducerResponse: () => "invalid receipt",
+    preAuthorize: false,
+    bindings: { mode: "tui", uiContext: selector.uiContext },
+    responses: [
+      fauxAssistantMessage([fauxToolCall("bash", { command: "cat diagnostics.log # npm test" }), fauxToolCall("bash", { command: "cat diagnostics.log # npm test" })], { stopReason: "toolUse" }),
+      fauxAssistantMessage("fixture complete"),
+    ],
+    beforeRun: async (session) => { setTimeout(() => { void session.abort(); }, 250).unref?.(); },
+    timeoutMs: 10_000,
+  });
+  assert.equal(selector.opened.length, 1);
+  assert.ok(selector.opened[0].opts?.signal, "the prompt is bound to the run signal so Escape can settle it");
+  assert.equal(selector.opened[0].settled, true, "Escape settles the prompt instead of wedging the turn");
+  assert.equal(f.results.length, 2, "both tool results survive the interrupt");
+  assert.equal(f.session.isIdle, true);
+});
+test("ordinary tool results do not ask permission for an unused reducer", async (t) => {
+  const selector = confirmSelector();
+  t.after(() => selector.stop());
+  const f = await scenario(t, {
+    config: reducerConfig, preAuthorize: false,
+    bindings: { mode: "tui", uiContext: selector.uiContext },
+    responses: [fauxAssistantMessage([fauxToolCall("bash", { command: "printf one" }), fauxToolCall("bash", { command: "printf two" })], { stopReason: "toolUse" }), fauxAssistantMessage("complete")],
+  });
+  assert.equal(selector.opened.length, 0);
+  assert.equal(f.results.length, 2);
+});
 test("reducer fallback preserves the log and accounts for the attempted model call", async (t) => {
   const f = await scenario(t, { responses: logResponses(), config: reducerConfig, seed: (cwd) => writeFile(join(cwd, "diagnostics.log"), log), reducerResponse: () => "invalid receipt" });
   assert.equal(f.reducerCalls, 1);
@@ -264,6 +365,57 @@ test("upstream fork fixes: verified by contract check on patched SoL-Pi", async 
   assert.equal(result.ok, true, result.errors.join("; "));
   assert.equal(result.actualRef, "93fd67a833da1b6236cf2582f02f7a6454d6d941");
   assert.ok(result.verifiedExports.includes("extensions/online-context-compact/index.ts:buildCompactionInstructions"));
+});
+test("explicit phase completion verifies scoped artifacts and persists a boundary", async (t) => {
+  const contract = await readFile(join(import.meta.dirname, "skills/ask-matt/phase-contract.json"), "utf8");
+  const f = await scenario(t, {
+    config: { onlineContextCompact: true },
+    seed: async (cwd) => {
+      await mkdir(join(cwd, "skills/ask-matt"), { recursive: true });
+      await writeFile(join(cwd, "skills/ask-matt/phase-contract.json"), contract);
+      await mkdir(join(cwd, ".scratch/alpha"), { recursive: true });
+      await writeFile(join(cwd, ".scratch/alpha/spec.md"), "# durable alpha spec");
+    },
+    responses: [
+      fauxAssistantMessage(fauxToolCall("sol_phase", { action: "begin", skill: "to-spec", feature: "alpha" }), { stopReason: "toolUse" }),
+      fauxAssistantMessage(fauxToolCall("sol_phase", { action: "complete" }), { stopReason: "toolUse" }),
+      fauxAssistantMessage(fauxToolCall("sol_phase", { action: "clear" }), { stopReason: "toolUse" }),
+      fauxAssistantMessage("complete"),
+    ],
+  });
+  assert.equal(f.results[0].details.phase.status, "in_progress");
+  assert.equal(f.results[1].details.phase.status, "completed");
+  assert.equal(f.results[2].details.phase, null);
+  assert.equal(f.manager.getEntries().filter(e => e.customType === "perfect-pi-phase-state").length, 3);
+});
+test("phase completion without the selected feature's artifacts fails closed", async (t) => {
+  const contract = await readFile(join(import.meta.dirname, "skills/ask-matt/phase-contract.json"), "utf8");
+  const f = await scenario(t, {
+    config: { onlineContextCompact: true },
+    seed: async (cwd) => {
+      await mkdir(join(cwd, "skills/ask-matt"), { recursive: true });
+      await writeFile(join(cwd, "skills/ask-matt/phase-contract.json"), contract);
+      await mkdir(join(cwd, ".scratch/other"), { recursive: true });
+      await writeFile(join(cwd, ".scratch/other/spec.md"), "# unrelated spec");
+    },
+    responses: [
+      fauxAssistantMessage(fauxToolCall("sol_phase", { action: "begin", skill: "to-spec", feature: "alpha" }), { stopReason: "toolUse" }),
+      fauxAssistantMessage(fauxToolCall("sol_phase", { action: "complete" }), { stopReason: "toolUse" }),
+      fauxAssistantMessage("complete"),
+    ],
+  });
+  assert.equal(f.results[1].isError, true);
+  assert.match(textOf(f.results[1]), /not durable/);
+});
+test("relative skill reads activate phase tracking", async (t) => {
+  const f = await scenario(t, {
+    seed: async (cwd) => {
+      await mkdir(join(cwd, "skills/tdd"), { recursive: true });
+      await writeFile(join(cwd, "skills/tdd/SKILL.md"), "# synthetic TDD instructions");
+    },
+    responses: [fauxAssistantMessage(fauxToolCall("read", { path: "skills/tdd/SKILL.md" }), { stopReason: "toolUse" }), fauxAssistantMessage("complete")],
+  });
+  assert.equal(f.manager.getEntries().find(e => e.customType === "perfect-pi-phase-transition").data.phase, "tdd");
 });
 test("runtime phase tracking records phase transitions for skill commands", async (t) => {
   const f = await scenario(t, {

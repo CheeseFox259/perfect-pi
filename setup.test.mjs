@@ -26,6 +26,10 @@ function installFixture(t) {
   mkdirSync(repo);
   mkdirSync(bin);
   for (const file of ["setup.mjs", "doctor.mjs"]) copyFileSync(join(root, file), join(repo, file));
+  mkdirSync(join(repo, "scripts"));
+  copyFileSync(join(root, "scripts/pi-runtime.mjs"), join(repo, "scripts/pi-runtime.mjs"));
+  mkdirSync(join(repo, "global/extensions"), { recursive: true });
+  copyFileSync(join(root, "global/extensions/compaction-settings.mjs"), join(repo, "global/extensions/compaction-settings.mjs"));
   const manifest = {
     packages: [],
     skillInstaller: "fixture-skills@1.0.0",
@@ -80,6 +84,46 @@ for (const name of names) {
     : [];
   return { home, repo, agentDir, shared, manifest, put, json, run, runFile, statePath, state, doctor, calls };
 }
+
+test("setup initializes user compaction defaults without overwriting later choices", (t) => {
+  const f = installFixture(t);
+  f.manifest.defaultSettings = { perfectPiCompaction: { provider: "cpa", model: "gemini-3.8-flash-high" } };
+  f.json(join(f.repo, "manifest.json"), f.manifest);
+  assert.equal(f.run("--skip-skill-install").status, 0);
+  const path = join(f.agentDir, "settings.json");
+  const settings = JSON.parse(readFileSync(path, "utf8"));
+  assert.deepEqual(settings.perfectPiCompaction, f.manifest.defaultSettings.perfectPiCompaction);
+  settings.perfectPiCompaction = { provider: "custom", model: "vendor/custom-model" };
+  f.json(path, settings);
+  assert.equal(f.run("--skip-skill-install").status, 0);
+  assert.deepEqual(JSON.parse(readFileSync(path, "utf8")).perfectPiCompaction, settings.perfectPiCompaction);
+});
+
+test("setup global settings writes use Pi storage and retain a concurrent picker preference", (t) => {
+  const f = installFixture(t);
+  const modules = join(f.home, "fake-global/node_modules");
+  const pkg = join(modules, "@earendil-works/pi-coding-agent");
+  f.json(join(pkg, "package.json"), { name: "@earendil-works/pi-coding-agent", version: "1.0.2", type: "module" });
+  f.put(join(pkg, "dist/index.js"), "export {};\n");
+  f.put(join(pkg, "dist/core/settings-manager.js"), `
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+export class FileSettingsStorage {
+  constructor(_cwd, agentDir) { this.path = join(agentDir, "settings.json"); }
+  withLock(scope, callback) {
+    if (scope !== "global") throw new Error("unexpected scope");
+    const settings = existsSync(this.path) ? JSON.parse(readFileSync(this.path, "utf8")) : {};
+    settings.perfectPiCompaction = { provider: "concurrent", model: "new-choice" };
+    writeFileSync(this.path, callback(JSON.stringify(settings)));
+    writeFileSync(join(process.env.HOME, "lock-used"), "yes");
+  }
+}\n`);
+  const result = f.runFile("setup.mjs", ["--skip-package-install", "--skip-skill-install"], { PI_GLOBAL_NODE_MODULES: modules });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(readFileSync(join(f.home, "lock-used"), "utf8"), "yes");
+  assert.deepEqual(JSON.parse(readFileSync(join(f.agentDir, "settings.json"), "utf8")).perfectPiCompaction,
+    { provider: "concurrent", model: "new-choice" });
+});
 
 test("the pinned Pi runtime is compared with the installed runtime", async (t) => {
   const f = installFixture(t);

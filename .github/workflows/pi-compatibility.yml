@@ -1,0 +1,74 @@
+name: Pi Compatibility
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pi-compatibility-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  versions:
+    runs-on: ubuntu-latest
+    outputs:
+      baseline: ${{ steps.versions.outputs.baseline }}
+      latest: ${{ steps.versions.outputs.latest }}
+      sol-ref: ${{ steps.versions.outputs.sol-ref }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - id: versions
+        name: Discover Stable Pi Version
+        run: |
+          node --input-type=module <<'JS'
+          import { appendFileSync, readFileSync } from 'node:fs';
+          import { checkPiUpdates } from './scripts/check-pi-updates.mjs';
+          const report = await checkPiUpdates();
+          const manifest = JSON.parse(readFileSync('manifest.json', 'utf8'));
+          appendFileSync(process.env.GITHUB_OUTPUT, `baseline=${report.baseline}\nlatest=${report.latest}\nsol-ref=${manifest.solPi.pinnedRef}\n`);
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, `## Pi Update Check\n\nBaseline: ${report.baseline}\nLatest stable: ${report.latest}\nUpdate available: ${report.updateAvailable}\n\nThis workflow does not change pins or upgrade user environments.\n`);
+          JS
+
+  compatibility:
+    needs: versions
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        track: [baseline, latest]
+    env:
+      PI_CODING_AGENT_DIR: ${{ github.workspace }}/.ci-agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Isolated Pi Runtime
+        env:
+          PI_VERSION: ${{ matrix.track == 'baseline' && needs.versions.outputs.baseline || needs.versions.outputs.latest }}
+        run: npm install --global --ignore-scripts "@earendil-works/pi-coding-agent@$PI_VERSION"
+      - name: Checkout Pinned SoL-Pi
+        uses: actions/checkout@v4
+        with:
+          repository: CheeseFox259/SoL-Pi
+          ref: ${{ needs.versions.outputs.sol-ref }}
+          path: .ci-agent/git/github.com/CheeseFox259/SoL-Pi
+      - name: Check Pi API and Extension Loading
+        run: node scripts/check-pi-compatibility.mjs
+      - name: Check SoL-Pi Contract
+        run: node scripts/check-sol-pi-contract.mjs --json
+      - name: Run Regression Suite
+        run: node --test *.test.mjs
+      - name: Audit Skills
+        run: node skill-audit.mjs
