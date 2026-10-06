@@ -23,7 +23,6 @@ const CAPABILITIES = {
 	process: ["process"],
 	research: ["research"],
 } as const;
-const optionalTools = new Set<string>(Object.values(CAPABILITIES).flat());
 const capabilityNames = Object.keys(CAPABILITIES) as (keyof typeof CAPABILITIES)[];
 
 // State persisted to session
@@ -38,7 +37,9 @@ export default function toolsExtension(pi: ExtensionAPI) {
 	let allTools: ToolInfo[] = [];
 	let cliAllowedTools: Set<string> | undefined;
 	let defaultNativeTools: string[] = [];
-	const allowed = (name: string) => !cliAllowedTools || cliAllowedTools.has(name);
+	let runtimeDefaults: string[] = [];
+	const visible = (name: string) => pi.getAllTools().some(tool => tool.name === name && tool.exposure !== "hidden");
+	const allowed = (name: string) => visible(name) && (!cliAllowedTools || cliAllowedTools.has(name));
 
 	// Persist current state
 	function persistState() {
@@ -82,14 +83,10 @@ export default function toolsExtension(pi: ExtensionAPI) {
 					if (!savedNativeDefaults.includes(name) && allowed(name)) enabledTools.add(name);
 				}
 			}
-			for (const tool of allTools) {
-				if (tool.exposure === "hidden") continue;
-				if (["obs_recall", "update_plan", "sol_phase"].includes(tool.name) && allowed(tool.name)) enabledTools.add(tool.name);
-			}
 			applyTools();
 		} else {
-			// Without saved state use compact defaults, unless CLI tools were explicit.
-			enabledTools = new Set(pi.getActiveTools().filter((name) => cliAllowedTools || name === "codemode" || name === "tool_search" || !optionalTools.has(name)));
+			// Keep Pi/package defaults, including any deliberate deferred activation.
+			enabledTools = new Set(pi.getActiveTools());
 			applyTools();
 		}
 	}
@@ -97,8 +94,8 @@ export default function toolsExtension(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "capabilities",
 		label: "Capabilities",
-		description: "Enable optional Pi tools before using them: code, web, browser, mcp, lsp, process, research. Empty input lists availability.",
-		promptGuidelines: ["If a skill needs an inactive tool, enable its group with capabilities, then use it in a subsequent call. Tool activation does not grant permission for external writes."],
+		description: "Inspect tool availability or re-enable an inactive group: code, web, browser, mcp, lsp, process, research. Normally tools are already available.",
+		promptGuidelines: ["Use available tools directly. Only call capabilities when a required group is inactive; activation does not authorize external writes or private-data disclosure."],
 		parameters: Type.Object({
 			enable: Type.Optional(Type.Array(Type.Union(capabilityNames.map((name) => Type.Literal(name))))),
 		}),
@@ -131,8 +128,23 @@ export default function toolsExtension(pi: ExtensionAPI) {
 
 	// Register /tools command
 	pi.registerCommand("tools", {
-		description: "Enable/disable tools",
-		handler: async (_args, ctx) => {
+		description: "Enable/disable tools, or /tools reset to restore defaults",
+		handler: async (args, ctx) => {
+			if (args.trim() === "reset") {
+				// Explicit opt-in also recovers optional groups in legacy compact sessions.
+				const groupTools = new Set<string>(Object.values(CAPABILITIES).flat());
+				const direct = pi.getAllTools().filter(tool =>
+					groupTools.has(tool.name) && (!tool.exposure || tool.exposure === "direct"));
+				enabledTools = new Set([...runtimeDefaults, ...direct.map(tool => tool.name)]);
+				applyTools();
+				persistState();
+				ctx.ui.notify("Restored runtime defaults and available capability groups; CLI restrictions and MCP exposure remain unchanged.", "info");
+				return;
+			}
+			if (args.trim()) {
+				ctx.ui.notify("Usage: /tools or /tools reset", "warning");
+				return;
+			}
 			if (ctx.mode !== "tui") {
 				ctx.ui.notify("/tools requires TUI mode", "error");
 				return;
@@ -208,7 +220,8 @@ export default function toolsExtension(pi: ExtensionAPI) {
 		const explicit = args.some((arg) =>
 			/^(--tools|--exclude-tools|--no-tools|--no-builtin-tools|-t|-xt|-nt|-nbt)(=|$)/.test(arg));
 		cliAllowedTools = explicit ? new Set(pi.getActiveTools()) : undefined;
-		defaultNativeTools = pi.getActiveTools().filter(name => ["codemode", "tool_search"].includes(name));
+		runtimeDefaults = pi.getActiveTools().filter(allowed);
+		defaultNativeTools = runtimeDefaults.filter(name => ["codemode", "tool_search"].includes(name));
 		restoreFromBranch(ctx);
 	});
 

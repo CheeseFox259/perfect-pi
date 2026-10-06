@@ -447,12 +447,16 @@ Not applicable
 
 需要长时间运行的 dev server 或 watcher 时，让 Pi 使用 `process`，不要手动在 shell 中用 `&`、`nohup` 或 `setsid`。
 
-## 7. 按需启用工具
+## 7. 默认可用工具
 
-新会话默认只加载核心工具和 `subagent`，减少首轮 context。需要额外能力时，让 Pi 调用 `capabilities`，例如：
+新会话保留 Pi 和已安装扩展的活动工具默认值，不再主动关闭 `process`、web、browser、LSP、research 等常用能力。模型可以直接选择工具，无需先调用 `capabilities`。
+
+Setup 仅在未配置时设置 `web-search.json` 的 `toolActivation: "eager"`，使已注册的搜索工具首轮可用。已有 `dynamic` 偏好、禁用的 web 功能、工具别名和凭据均保留；此配置变化需要重启 Pi。
+
+`capabilities` 仍可查询工具状态或恢复未激活的组，例如：
 
 ```text
-启用 browser capability，然后验证当前应用的登录页面。
+查询 capabilities 状态；如果 browser 不活跃，启用后验证当前应用的登录页面。
 ```
 
 支持的 capability：
@@ -473,8 +477,16 @@ Not applicable
 /tools
 ```
 
+旧会话已保存的工具选择不会被强制扩大。可显式恢复默认工具：
+
+```text
+/tools reset
+```
+
+它恢复运行时默认值和已注册的 direct capability 组，不解除 MCP 的 hidden/deferred exposure。使用 `/tools` 手动关闭的选择会在分支中保存。
+
 注意：
-- capability activation 不会自动获得生产写入权限。
+- 工具可用不代表已启动服务，也不会自动获得联网、私有数据外发或生产写入权限。
 - `--tools`、`--exclude-tools` 等显式 CLI 限制优先级最高。
 - capability 启用后，下一次模型请求才能稳定看到新增 tool schema。
 - 工具输出采用原生 `structuredContent`，便于代码模式精确消费。
@@ -828,7 +840,7 @@ Perfect Pi 已验证：
 - Pi extension loader、question/questionnaire UI handler。
 - 路由 smoke、工作树审查、ticket contract。
 - Git three-way merge 和本地 tracker ledger。
-- capability 按需加载。
+- 常用工具默认可用；`capabilities` 保留为状态查询与恢复入口。
 - 只读 Pi skill evaluation subprocess。
 
 尚未由本配置统一验证：

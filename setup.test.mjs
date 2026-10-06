@@ -28,7 +28,7 @@ function installFixture(t) {
   for (const file of ["setup.mjs", "doctor.mjs"]) copyFileSync(join(root, file), join(repo, file));
   mkdirSync(join(repo, "scripts"));
   copyFileSync(join(root, "scripts/pi-runtime.mjs"), join(repo, "scripts/pi-runtime.mjs"));
-  for (const file of ["managed-mcp.mjs", "mcp-config.mjs", "mcp-secrets.mjs"]) copyFileSync(join(root, "scripts", file), join(repo, "scripts", file));
+  for (const file of ["managed-mcp.mjs", "mcp-config.mjs", "mcp-secrets.mjs", "web-access-config.mjs"]) copyFileSync(join(root, "scripts", file), join(repo, "scripts", file));
   mkdirSync(join(repo, "global/extensions"), { recursive: true });
   copyFileSync(join(root, "global/extensions/compaction-settings.mjs"), join(repo, "global/extensions/compaction-settings.mjs"));
   const manifest = {
@@ -85,6 +85,43 @@ for (const name of names) {
     : [];
   return { home, repo, agentDir, shared, manifest, put, json, run, runFile, statePath, state, doctor, calls };
 }
+
+test("setup defaults web access to eager without touching user settings or credentials", t => {
+  const f = installFixture(t);
+  f.manifest.packages = ["npm:pi-web-access@0.33.0"];
+  f.json(join(f.repo, "manifest.json"), f.manifest);
+  const path = join(f.agentDir, "web-search.json");
+  const personal = { provider: "fixture", apiKey: "synthetic-never-print", tools: { fetch_content: { enabled: false } } };
+  f.json(path, personal);
+  const before = readFileSync(path, "utf8");
+  const dry = f.run("--dry-run", "--skip-skill-install");
+  assert.equal(dry.status, 0, dry.stderr);
+  assert.equal(readFileSync(path, "utf8"), before);
+  assert.ok(!dry.stdout.includes(personal.apiKey));
+  assert.equal(f.run("--skip-skill-install").status, 0);
+  assert.deepEqual(JSON.parse(readFileSync(path)), { ...personal, toolActivation: "eager" });
+  assert.equal(f.doctor().statuses["web tools"].status, "SYNCED");
+  const initialized = readFileSync(path, "utf8");
+  assert.equal(f.run("--skip-skill-install").status, 0);
+  assert.equal(readFileSync(path, "utf8"), initialized);
+  f.json(path, { ...personal, toolActivation: "dynamic" });
+  const explicit = readFileSync(path, "utf8");
+  assert.equal(f.run("--skip-skill-install").status, 0);
+  assert.equal(readFileSync(path, "utf8"), explicit);
+  assert.match(f.doctor().statuses["web tools"].detail, /user preference/);
+});
+
+test("invalid web config fails preflight without leaking contents or writing resources", t => {
+  const f = installFixture(t);
+  f.manifest.packages = ["npm:pi-web-access@0.33.0"];
+  f.json(join(f.repo, "manifest.json"), f.manifest);
+  f.put(join(f.agentDir, "web-search.json"), '{"key":"synthetic-sensitive",broken');
+  const result = f.run("--skip-skill-install");
+  assert.notEqual(result.status, 0);
+  assert.ok(!result.stderr.includes("synthetic-sensitive"));
+  assert.equal(existsSync(f.statePath), false);
+  assert.equal(existsSync(join(f.agentDir, "AGENTS.md")), false);
+});
 
 test("setup --help and unsupported flags are side-effect free", t => {
   const f = installFixture(t);

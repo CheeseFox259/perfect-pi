@@ -8,6 +8,8 @@ import { homedir } from "node:os";
 import { piRuntimeRoots as runtimeRoots, detectPiRuntime as resolveRuntime } from "./scripts/pi-runtime.mjs";
 
 import { planManagedMcp, syncManagedMcp, inspectManagedMcp } from "./scripts/managed-mcp.mjs";
+import { ensureEagerWebTools, inspectWebToolActivation } from "./scripts/web-access-config.mjs";
+const usesWebAccess = manifest => packageSources(manifest).some(source => /^npm:pi-web-access@/.test(source));
 const root = dirname(fileURLToPath(import.meta.url));
 const agentDir = process.env.PI_CODING_AGENT_DIR
   ? resolve(process.env.PI_CODING_AGENT_DIR.replace(/^~(?=\/|$)/, homedir()))
@@ -338,6 +340,7 @@ async function sync({ dryRun = false, skipPackageInstall = false, skipSkillInsta
   const previousState = await readJson(statePath, {});
   // Preflight before any installer or managed-resource write; recheck under the MCP lock later.
   const mcpPlan = planManagedMcp(manifest, agentDir, previousState.mcpServers ?? {}, { adopt: adoptMcp });
+  if (usesWebAccess(manifest)) ensureEagerWebTools(agentDir, { dryRun: true });
   const previousResources = new Set(previousState.resources ?? []);
   const seenMaterialized = new Set();
   if (dryRun) {
@@ -408,6 +411,7 @@ async function sync({ dryRun = false, skipPackageInstall = false, skipSkillInsta
     if (Object.keys(manifest.mcpServers ?? {}).length || Object.keys(previousState.mcpServers ?? {}).length) {
       syncManagedMcp(manifest, agentDir, previousState.mcpServers ?? {}, { adopt: adoptMcp });
     }
+    if (usesWebAccess(manifest)) ensureEagerWebTools(agentDir);
     await writeGlobalSettings(settings.settingsPath, `${JSON.stringify(settings.next, null, 2)}\n`);
     await writeFile(statePath, `${JSON.stringify({
       schemaVersion: 1,
@@ -418,6 +422,7 @@ async function sync({ dryRun = false, skipPackageInstall = false, skipSkillInsta
       resources: nextResources,
     }, null, 2)}\n`);
   } else {
+    if (usesWebAccess(manifest)) console.log("WEB ACCESS default eager activation; explicit user preference preserved; no network requests");
     console.log(`MCP CONFIG ${Object.keys(mcpPlan.owned).join(", ") || "none"}; no servers started; adopted: ${mcpPlan.adopted.join(", ") || "none"}`);
     console.log(`SETTINGS ${settings.settingsPath}; managed fields and package/skill policies only`);
     console.log(JSON.stringify({ ...manifest.managedSettings, packages: packageDeclarations(manifest), skills: settings.currentManagedPatterns }, null, 2));
@@ -477,6 +482,10 @@ export async function inspect() {
   if (Object.keys(manifest.mcpServers ?? {}).length || Object.keys(previousState.mcpServers ?? {}).length) {
     const mcp = inspectManagedMcp(manifest, agentDir, previousState.mcpServers ?? {});
     mark("managed MCP", mcp.status, mcp.detail);
+  }
+  if (usesWebAccess(manifest)) {
+    const web = inspectWebToolActivation(agentDir);
+    mark("web tools", web.status, web.detail);
   }
   const managedSettings = manifest.managedSettings ?? {};
   const liveManagedSettings = Object.fromEntries(Object.keys(managedSettings).map((key) => [key, liveSettings[key]]));
