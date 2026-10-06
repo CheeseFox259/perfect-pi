@@ -1,0 +1,4 @@
+- bash 扫描 >1MB 文件或运行测试套件时必须设 `timeout`。
+- 禁止 `sleep N` + `&` 等待后台进程；用 `wait $!` 或 process 工具。
+- write/edit 前确认所有必需参数完整，不生成缺少 path 的调用。
+- 生成超过 200 行的单次 write 前先分步确认方案。

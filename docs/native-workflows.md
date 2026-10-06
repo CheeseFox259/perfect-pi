@@ -57,6 +57,26 @@ The user selects **Import Clipboard Image**, **Import Image File**, or **Skip Im
 
 `measure.mjs` uses the actual CLI system message's `toolsAdded` definitions. It no longer creates a separate SDK session that lacks the CLI's native built-in loadout. Importing the module is side-effect free; running its CLI still makes one provider request and requires the normal budget/authorization.
 
+## Model Habits (Per-Model Habit Corrections)
+
+Models frequently exhibit model-specific pathological behaviors (e.g. running unbounded regex scans across multi-hundred-megabyte binaries without `timeout`, simulating background execution with fragile `sleep N &` patterns instead of `wait`, or generating tools without required parameters).
+
+`global/extensions/model-habits.ts` intercepts Pi's `before_agent_start` hook:
+1. Normalizes the active model identifier (`ctx.model.id`) to a filesystem-safe name (lowercase, hyphens, non-alphanumeric stripped). Providers are omitted so multiple provider routes for the same model share one file.
+2. Resolves the habit file via a progressive fallback chain: exact match (`minimax-m3.1-flash-preview.md`) -> family (`minimax-m3.1.md`) -> vendor (`minimax.md`).
+3. Reads non-comment rule bullets up to an 800-character budget and pushes them directly into `systemPromptOptions.promptGuidelines`.
+4. Guidelines merge into `<rules>` in the system prompt with zero additional XML overhead and ~0 extra token framing. Models without habits incur zero prompt overhead.
+
+TUI commands:
+- `/habits`: display current model's active habit corrections.
+- `/habits list`: list all managed and user-added habit files.
+- `/habits edit [model-id]`: edit or create a habit file with `$EDITOR`.
+
+Storage and lifecycle:
+- Baseline files live in `habits/*.md` in the repository and sync to `<agent-dir>/habits/` via `setup.mjs`.
+- User-added habits in `<agent-dir>/habits/` are preserved across syncs.
+- `doctor.mjs` verifies habit sync status alongside skills and extensions.
+
 ## Verification Boundary
 
 Real MiniMax tool registration and one public-documentation search through native Pi codemode succeeded. The first test script subsequently timed out during cleanup; a corrected script verified registration/discovery and explicit session_shutdown without repeating the paid search. During investigation two older MiniMax processes were mistakenly terminated; Claude configuration/credentials were not modified, but its connection may require reconnecting. This is an operational mistake, not a verified clean first E2E run.

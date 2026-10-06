@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { cp, lstat, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, realpathSync, readdirSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
@@ -121,6 +121,7 @@ async function managedResourceMap() {
   await add(join(root, "global", "extensions"), "extensions");
   await add(join(root, "scripts"), "scripts");
   await add(join(root, "skills"), "skills");
+  await add(join(root, "habits"), "habits");
   return map;
 }
 
@@ -522,6 +523,21 @@ export async function inspect() {
     if (expected !== actual) { localSkillStatus = "DRIFTED"; break; }
   }
   mark("local skills", localSkillStatus, `${localSkillEntries.length} managed files`);
+
+  const habitsEntries = [...resourceMap.entries()].filter(([target]) => target.startsWith("habits/"));
+  let habitsStatus = "SYNCED";
+  for (const [targetRelative, source] of habitsEntries) {
+    const target = join(agentDir, targetRelative);
+    if (!existsSync(target)) { habitsStatus = "MISSING"; break; }
+    const [expected, actual] = await Promise.all([readFile(source, "utf8"), readFile(target, "utf8")]);
+    if (expected !== actual) { habitsStatus = "DRIFTED"; break; }
+  }
+  if (habitsEntries.length > 0) {
+    const liveDir = join(agentDir, "habits");
+    const userOnly = existsSync(liveDir) ? readdirSync(liveDir).filter((f) => f.endsWith(".md") && !habitsEntries.some(([t]) => t === `habits/${f}`)).length : 0;
+    mark("model habits", habitsStatus, `${habitsEntries.length} managed${userOnly ? `; ${userOnly} user-added` : ""}`);
+  }
+
   const expectedRefs = Object.fromEntries((manifest.skills ?? []).filter((skill) => skill.ref).map((skill) => [skill.source, skill.ref]));
   const installedRefs = previousState.skillRefs ?? {};
   const refsMatch = Object.entries(expectedRefs).every(([source, ref]) => installedRefs[source] === ref);

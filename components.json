@@ -286,6 +286,11 @@
       "type": "custom",
       "localPath": "global/extensions/structured-output.ts",
       "description": "Structured JSON output terminator"
+    },
+    "model-habits": {
+      "type": "custom",
+      "localPath": "global/extensions/model-habits.ts",
+      "description": "Per-model habit correction prompts loaded dynamically via before_agent_start into rules, with model ID normalization and fallback chain"
     }
   }
 }
