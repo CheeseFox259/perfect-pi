@@ -4,12 +4,12 @@
   "upstreams": {
     "mattpocock/skills": {
       "repo": "https://github.com/mattpocock/skills.git",
-      "pinnedRef": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+      "pinnedRef": "4588b32ecab9ecc9fc8cc6b6c5e7d675b6004b0d",
       "description": "Matt Pocock engineering methodology kernel (design tree, tdd, code review, etc.)"
     },
     "anthropics/skills": {
       "repo": "https://github.com/anthropics/skills.git",
-      "pinnedRef": "8a1541c4a3ffa5a20a5a91de0dcf3f0bab1d1ef4",
+      "pinnedRef": "683bc88e56f3e09ba94f7055977f3d3aa499f202",
       "description": "Anthropic official reference skills (frontend design, etc.)"
     },
     "vercel-labs/agent-skills": {
@@ -28,7 +28,7 @@
     }
   },
   "skills": {
-    "ask-matt": {"type":"override","upstream":"mattpocock/skills","baseRef":"d81f3a183412e71a5b1e84ca21bc1a35eea03a60","localPath":"skills/ask-matt/SKILL.md","upstreamRelPath":"skills/engineering/ask-matt/SKILL.md","preservedFeatures":["Workflow selection","Pi command names and execution semantics"]},
+    "ask-matt": {"type":"override","upstream":"mattpocock/skills","baseRef":"4588b32ecab9ecc9fc8cc6b6c5e7d675b6004b0d","localPath":"skills/ask-matt/SKILL.md","upstreamRelPath":"skills/engineering/ask-matt/SKILL.md","preservedFeatures":["Workflow selection","Pi command names and execution semantics"]},
     "claude-handoff": {"type":"override","upstream":"mattpocock/skills","baseRef":"d81f3a183412e71a5b1e84ca21bc1a35eea03a60","localPath":"skills/claude-handoff/SKILL.md","upstreamRelPath":"skills/in-progress/claude-handoff/SKILL.md","preservedFeatures":["Legacy command alias","Pi handoff and blocking delegation"]},
     "code-review": {"type":"override","upstream":"mattpocock/skills","baseRef":"d81f3a183412e71a5b1e84ca21bc1a35eea03a60","localPath":"skills/code-review/SKILL.md","upstreamRelPath":"skills/engineering/code-review/SKILL.md","preservedFeatures":["Independent Standards and Spec axes","Working-tree, committed and snapshot modes","Untracked file review"]},
     "codebase-design": {"type":"override","upstream":"mattpocock/skills","baseRef":"d81f3a183412e71a5b1e84ca21bc1a35eea03a60","localPath":"skills/codebase-design/SKILL.md","upstreamRelPath":"skills/engineering/codebase-design/SKILL.md","preservedFeatures":["Deep module vocabulary","Blocking design exploration and questionnaire decisions"]},
@@ -189,7 +189,7 @@
     "maintain": {
       "type": "custom",
       "localPath": "skills/maintain/SKILL.md",
-      "description": "Maintenance assistant to audit upstream updates, diff overrides, and reconcile 3-way merges"
+      "description": "Complete runtime/package/skill/MCP maintenance with lineage reconciliation, integration acceptance and evidence gates"
     }
   },
   "agents": {
@@ -228,6 +228,22 @@
       "description": "Standalone upstream package loaded through a guarded Perfect Pi adapter; original package extension is filtered out",
       "preservedFeatures": ["Exact observation recall", "Native online compaction opt-in", "Evidence-checked log reduction"],
       "adaptations": ["Guarded nested bash for fused validation", "Pi 1.0 error outcomes", "Authorized reducer route and usage accounting", "Recall availability checks"]
+    }
+  },
+  "mcpServers": {
+    "codebase-memory": {
+      "type": "upstream-adapted",
+      "repo": "https://github.com/DeusData/codebase-memory-mcp",
+      "manifestPath": "mcpServers.codebase-memory",
+      "localPath": "scripts/managed-mcp.mjs",
+      "description": "Pinned MCP-only code graph with source/coverage verification; mutating ADR, project deletion and trace ingestion tools hidden"
+    },
+    "context-mode": {
+      "type": "upstream-adapted",
+      "repo": "https://github.com/mksglu/context-mode",
+      "manifestPath": "mcpServers.context-mode",
+      "localPath": "scripts/managed-mcp.mjs",
+      "description": "Pinned MCP-only local FTS5 retrieval; arbitrary execution, network fetch, upgrade/purge/insight and native Pi lifecycle adapter intentionally disabled"
     }
   },
   "extensions": {

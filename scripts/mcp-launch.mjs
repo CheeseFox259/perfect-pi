@@ -1,29 +1,33 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { resolve, join } from "node:path";
-import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { readFileSync, realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { readMcpSecret } from "./mcp-secrets.mjs";
 
 export function childEnvironment(agentDir, server, envName, secret) {
   const base = ["PATH", "HOME", "USER", "LOGNAME", "TMPDIR", "TMP", "TEMP", "LANG", "LC_ALL", "LC_CTYPE", "SystemRoot", "WINDIR", "COMSPEC", "PATHEXT", "APPDATA", "LOCALAPPDATA", "USERPROFILE", "UV_CACHE_DIR"];
+  // Native Pi resolves config values before spawning this launcher; never evaluate env expressions here.
   let configured = [];
   try { configured = Object.keys(JSON.parse(readFileSync(join(agentDir, "mcp.json"), "utf8")).mcpServers?.[server]?.env ?? {}); }
   catch {}
   const env = Object.fromEntries([...new Set([...base, ...configured])].filter(name => process.env[name] !== undefined).map(name => [name, process.env[name]]));
-  return { ...env, [envName]: secret };
+  return envName ? { ...env, [envName]: secret } : env;
 }
 
 export function launchMcp(argv, options = {}) {
-  const [agentDir, server, envName, command, ...args] = argv;
-  if (!agentDir || !command) throw new Error("MCP launcher configuration is incomplete");
-  const secret = readMcpSecret(agentDir, server, envName);
+  const publicServer = argv[0] === "--public";
+  const [agentDir, server, envName, command, ...args] = publicServer
+    ? [argv[1], argv[2], undefined, argv[3], ...argv.slice(4)] : argv;
+  if (!agentDir || !server || !command) throw new Error("MCP launcher configuration is incomplete");
+  const secret = publicServer ? undefined : readMcpSecret(agentDir, server, envName);
   const child = (options.spawn ?? spawn)(command, args, {
     env: childEnvironment(agentDir, server, envName, secret), stdio: ["pipe", "pipe", "pipe"], shell: false,
     detached: process.platform !== "win32",
   });
   const streams = options.streams ?? process;
   streams.stdin.pipe(child.stdin);
+  const redact = value => secret ? value.split(secret).join("[REDACTED]") : value;
   const relay = (source, target) => {
     source.setEncoding("utf8"); let pending = "";
     source.on("data", chunk => {
@@ -31,10 +35,10 @@ export function launchMcp(argv, options = {}) {
       if (pending.length > 8 * 1024 * 1024) { pending = ""; stop(); return; }
       let end;
       while ((end = pending.indexOf("\n")) >= 0) {
-        target.write(pending.slice(0, end + 1).split(secret).join("[REDACTED]")); pending = pending.slice(end + 1);
+        target.write(redact(pending.slice(0, end + 1))); pending = pending.slice(end + 1);
       }
     });
-    source.on("end", () => { if (pending) target.write(pending.split(secret).join("[REDACTED]")); });
+    source.on("end", () => { if (pending) target.write(redact(pending)); });
   };
   relay(child.stdout, streams.stdout); relay(child.stderr, streams.stderr);
   child.stdin.on("error", () => {});
@@ -68,7 +72,7 @@ export function launchMcp(argv, options = {}) {
     child.once("close", code => finish(code ?? 1));
   });
 }
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) {
   try { process.exitCode = await launchMcp(process.argv.slice(2)); }
   catch { process.stderr.write("MCP launch failed; check credentials and configuration\n"); process.exitCode = 1; }
 }

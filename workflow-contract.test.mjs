@@ -14,6 +14,21 @@ const registry = JSON.parse(read("components.json"));
 
 const fields = ["Triage", "Execution", "Claimed by", "Branch", "Blocked by", "Verified commit", "Last attempt"];
 
+test("bug fixes route through retro and experimental coordination stays hidden", () => {
+  const askMatt = read("skills/ask-matt/SKILL.md");
+  const bugRoute = askMatt.split("\n").find(line => line.includes("Something's broken"));
+  assert.ok(bugRoute);
+  assert.match(bugRoute, /Once the fix is in, run \*\*`\/skill:retro`\*\* in the same session/);
+  assert.ok(bugRoute.indexOf("/skill:retro") < bugRoute.indexOf("/skill:improve-codebase-architecture"));
+  assert.doesNotMatch(bugRoute, /Its post-mortem hands off/);
+  const matt = manifest.skills.find(entry => entry.source === "mattpocock/skills");
+  assert.equal(matt.ref, registry.upstreams["mattpocock/skills"].pinnedRef);
+  assert.match(registry.skills["ask-matt"].baseRef, /^[0-9a-f]{40}$/);
+  assert.equal(matt.selection, "all");
+  assert.ok(!matt.requiredSkills.includes("chief-of-staff"));
+  assert.ok(manifest.skillPolicy.excludeFromPi.includes("chief-of-staff"));
+});
+
 test("implementation ticket producers and consumer share the local contract", () => {
   for (const field of fields) {
     assert.match(setup, new RegExp(`${field}:`), `setup missing ${field}`);

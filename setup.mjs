@@ -7,6 +7,7 @@ import { isDeepStrictEqual } from "node:util";
 import { homedir } from "node:os";
 import { piRuntimeRoots as runtimeRoots, detectPiRuntime as resolveRuntime } from "./scripts/pi-runtime.mjs";
 
+import { planManagedMcp, syncManagedMcp, inspectManagedMcp } from "./scripts/managed-mcp.mjs";
 const root = dirname(fileURLToPath(import.meta.url));
 const agentDir = process.env.PI_CODING_AGENT_DIR
   ? resolve(process.env.PI_CODING_AGENT_DIR.replace(/^~(?=\/|$)/, homedir()))
@@ -112,6 +113,7 @@ async function managedResourceMap() {
   await add(join(root, "docs", "sol-pi.md"), "docs/sol-pi.md");
   await add(join(root, "docs", "pi-compatibility.md"), "docs/pi-compatibility.md");
   await add(join(root, "docs", "native-workflows.md"), "docs/native-workflows.md");
+  await add(join(root, "docs", "managed-mcp.md"), "docs/managed-mcp.md");
   await add(join(root, "docs", "USAGE.zh-CN.md"), "docs/USAGE.zh-CN.md");
   await add(join(root, "manifest.json"), "manifest.json");
   await add(join(root, "global", "agents"), "agents");
@@ -327,12 +329,14 @@ async function installMissingSkills(skillSources, { dryRun, skipInstall, previou
   return installedRefs;
 }
 
-async function sync({ dryRun = false, skipPackageInstall = false, skipSkillInstall = false, adoptOverrides = false } = {}) {
+async function sync({ dryRun = false, skipPackageInstall = false, skipSkillInstall = false, adoptOverrides = false, adoptMcp = false } = {}) {
   const manifest = await readJson(manifestPath);
   const components = await readJson(componentsPath, {});
   const sourceSettings = manifest.managedSettings ?? {};
   const resourceMap = await managedResourceMap();
   const previousState = await readJson(statePath, {});
+  // Preflight before any installer or managed-resource write; recheck under the MCP lock later.
+  const mcpPlan = planManagedMcp(manifest, agentDir, previousState.mcpServers ?? {}, { adopt: adoptMcp });
   const previousResources = new Set(previousState.resources ?? []);
   const seenMaterialized = new Set();
   if (dryRun) {
@@ -400,17 +404,22 @@ async function sync({ dryRun = false, skipPackageInstall = false, skipSkillInsta
     Object.entries(installedSkillRefs).filter(([source]) => manifestSources.has(source))
   );
   if (!dryRun) {
+    if (Object.keys(manifest.mcpServers ?? {}).length || Object.keys(previousState.mcpServers ?? {}).length) {
+      syncManagedMcp(manifest, agentDir, previousState.mcpServers ?? {}, { adopt: adoptMcp });
+    }
     await writeGlobalSettings(settings.settingsPath, `${JSON.stringify(settings.next, null, 2)}\n`);
     await writeFile(statePath, `${JSON.stringify({
       schemaVersion: 1,
       packages: settings.managedPackages,
       skillPatterns: settings.currentManagedPatterns,
       skillRefs: activeSkillRefs,
+      mcpServers: mcpPlan.owned,
       resources: nextResources,
     }, null, 2)}\n`);
   } else {
-    console.log(`SETTINGS ${settings.settingsPath}`);
-    console.log(JSON.stringify(settings.next, null, 2));
+    console.log(`MCP CONFIG ${Object.keys(mcpPlan.owned).join(", ") || "none"}; no servers started; adopted: ${mcpPlan.adopted.join(", ") || "none"}`);
+    console.log(`SETTINGS ${settings.settingsPath}; managed fields and package/skill policies only`);
+    console.log(JSON.stringify({ ...manifest.managedSettings, packages: packageDeclarations(manifest), skills: settings.currentManagedPatterns }, null, 2));
   }
   return { manifest, resourceMap, settings, skippedPackageInstall: skipPackageInstall };
 }
@@ -464,6 +473,10 @@ export async function inspect() {
       runtime ? `${runtime.version} installed; manifest pins ${manifest.piVersion}` : `manifest pins ${manifest.piVersion}; no ${piRuntimePackage} found in ${piRuntimeRoots().join(", ")}`);
   }
 
+  if (Object.keys(manifest.mcpServers ?? {}).length || Object.keys(previousState.mcpServers ?? {}).length) {
+    const mcp = inspectManagedMcp(manifest, agentDir, previousState.mcpServers ?? {});
+    mark("managed MCP", mcp.status, mcp.detail);
+  }
   const managedSettings = manifest.managedSettings ?? {};
   const liveManagedSettings = Object.fromEntries(Object.keys(managedSettings).map((key) => [key, liveSettings[key]]));
   mark("settings", same(liveManagedSettings, managedSettings) ? "SYNCED" : "DRIFTED", "managed fields only");
@@ -594,6 +607,12 @@ export async function inspect() {
 
 async function main() {
   const args = new Set(process.argv.slice(2));
+  const supported = ["--check", "--dry-run", "--skip-package-install", "--skip-skill-install", "--adopt-overrides", "--adopt-mcp"];
+  if (args.has("--help")) {
+    console.log(`Usage: node setup.mjs [${supported.join(" | ")}]\nSetup syncs managed files and pinned MCP configuration, but never starts MCP servers.\n--adopt-mcp claims only the reviewed legacy unpinned npx entries; edited or unrelated servers are preserved.`);
+    return;
+  }
+  if ([...args].some(arg => !supported.includes(arg))) throw new Error("Unsupported setup argument; use --help (no changes made)");
   if (args.has("--check")) {
     const report = await inspect();
     console.log(JSON.stringify(report, null, 2));
@@ -605,6 +624,7 @@ async function main() {
     skipPackageInstall: args.has("--skip-package-install"),
     skipSkillInstall: args.has("--skip-skill-install"),
     adoptOverrides: args.has("--adopt-overrides"),
+    adoptMcp: args.has("--adopt-mcp"),
   });
   const piStatus = (await inspect()).statuses["pi runtime"];
   if (piStatus && piStatus.status !== "SYNCED") console.log(`PI RUNTIME ${piStatus.status}: ${piStatus.detail}`);

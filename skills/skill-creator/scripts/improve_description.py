@@ -17,7 +17,7 @@ from scripts.utils import parse_skill_md, session_model
 
 
 def _call_pi(prompt: str, model: str | None, timeout: int = 300) -> str:
-    """Run `pi -p --no-session --no-tools --no-skills --no-context-files`
+    """Run `pi -p --no-session --no-tools --no-mcp --no-extensions --no-skills --no-context-files`
     with the prompt on stdin and return the text response.
 
     Prompt goes over stdin (not argv) because it embeds the full SKILL.md
@@ -31,6 +31,8 @@ def _call_pi(prompt: str, model: str | None, timeout: int = 300) -> str:
         "-p",
         "--no-session",
         "--no-tools",
+        "--no-mcp",
+        "--no-extensions",
         "--no-skills",
         "--no-context-files",
     ]

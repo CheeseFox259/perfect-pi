@@ -1,78 +1,70 @@
 ---
 name: maintain
-description: Inspect upstream skill and component updates, audit local overrides, perform 3-way diffs and guided merges while preserving local enhancements. Use when asked to 'check updates', 'update skills', 'maintain perfect-pi', or 'reconcile'.
+description: Maintain Perfect Pi runtime, packages, skills and MCP integrations. Use for updates, maintenance, reconciliation or adding a harness capability; audit lineage, permissions and complete integration with reproducible verification.
 ---
 
-# Perfect Pi Maintain & Upstream Reconciler
+# Perfect Pi Maintenance
 
-Maintain the integrity of the Perfect Pi engineering harness, its upstream skill sources, and its local overrides.
+Maintenance ends with reproducible behavior and bounded evidence, not a changed pin or a connected server. Keep the repository as the source of truth and preserve local adaptations, consent, guardrails and personal configuration.
 
-## Core Philosophy: 3-Way Lineage Tracking
+## 1. Establish Scope
 
-Perfect Pi uses an explicit three-way lineage model for all components recorded in `components.json`:
-- **Base**: The upstream commit recorded as each override's `baseRef`; the source-wide installed target is `upstreams[source].pinnedRef`.
-- **Upstream**: The latest remote upstream commit from official repositories (e.g., `mattpocock/skills`).
-- **Local**: Our enhanced version containing local capabilities (e.g., interactive TUI `questionnaire` dispatch, `e` key amendments).
+Record `git status --short`, HEAD, task-owned files and pre-existing changes before editing. Read the repository manifest, component registry, installer and relevant tests; discover verification commands from the repo instead of assuming npm scripts. Resolve `<agent-dir>` from `PI_CODING_AGENT_DIR` or `~/.pi/agent`.
 
-When upstream updates occur, your goal is to incorporate upstream algorithmic/methodology improvements while **100% preserving local enhancements**.
+Record authorization separately for repository edits, runtime/dependency installation, live synchronization, external data requests and commits. Reuse authorization already granted; ask only for missing approval or unresolved choices. Inspection and `--help` must be side-effect free. Installation flags that skip work are not proof that dependencies were installed.
 
----
+**Done:** scope, starting state, ownership and permitted side effects are explicit. Private credentials and unrelated edits are excluded.
 
-## Workflow Steps
+## 2. Inventory All Managed Layers
 
-### Step 1: Inspect Status
-
-Run the Pi update and compatibility checks as well as the Skill lineage check:
+Run from the repository:
 
 ```bash
 node scripts/check-pi-updates.mjs
 node scripts/check-pi-compatibility.mjs
 node scripts/check-sol-pi-contract.mjs --json
 node reconcile.mjs status --json
+node doctor.mjs
 ```
 
-For a Pi runtime update, read `docs/pi-compatibility.md` (or `<agent-dir>/docs/pi-compatibility.md` outside the repository) and follow its upgrade procedure. Report version drift separately from API compatibility. Do not advance `manifest.json:piVersion`, install a new live runtime, or sync managed resources without approval. Baseline/latest CI results are compatibility evidence, not automatic upgrade authorization.
+Inspect `manifest.json` for all package and MCP pins as well as runtime and skills. Check official package/release metadata for each in-scope component; `reconcile` tracks registered Git sources, not every npm package. Distinguish version drift, API compatibility, config ownership and runtime health. Doctor's managed MCP result is configuration-only and does not start servers.
 
-Read the JSON output:
-1. Check `upstreams`: Identify if any source has `status === "UPDATE_AVAILABLE"`.
-2. Check `overrides`: See which locally modified skills are linked to that upstream and what their `preservedFeatures` are.
-3. If `diff` or `3way-test` fails with `Path 'skills/<name>/SKILL.md' not found at ref`, the registry's `upstreamRelPath` is wrong, not the pin. Upstream nests every skill under a category directory (`skills/engineering/...`, `skills/productivity/...`, `skills/in-progress/...`, `skills/misc/...`); resolve the real path with `git ls-tree -r <ref> --name-only | grep '/<name>/SKILL.md'` and correct every override before trusting any merge result.
+Read active overrides/custom skills from `components.json`. An old override `baseRef` may be intentional; source-wide alignment does not prove every override has incorporated head. For affected skills, read [lineage reconciliation](references/lineage.md).
 
-### Step 2: Report to the User
+**Done:** every in-scope layer has installed/pinned/candidate state or an explicit blocked/not-run reason. Stop for an audit-only request only when no drift, failures or requested integrations remain.
 
-- If all Skill upstreams are **UP_TO_DATE** and there is no Pi update or compatibility failure:
-  - Inform the user that all upstream skills and local overrides are fully aligned.
-  - Summarize the active local overrides and custom skills, read from `components.json`: entries under `skills` with `type: "override"` are local overrides, `type: "custom"` are harness-only skills. Read the list from the registry rather than naming it, so the summary cannot drift as overrides are added.
-  - Stop here unless the user requests a diff review.
+## 3. Review Sources and Impact
 
-- If Skill or Pi updates are available, or a compatibility check failed:
-  - Present a concise, structured briefing:
-    - Which upstream has new commits (`pinnedRef` -> `remoteHead`).
-    - Which local overrides are affected.
-    - Summary of local features that must be safeguarded.
+Use candidate-version official changelogs, documentation, package metadata and actual implementation/tool schemas. README feature claims alone are not verification. Inspect native Pi adapters even when choosing MCP-only integration; distinguish available upstream features from features actually enabled.
 
-### Step 3: Diff Analysis & Guided Decision
+For Pi updates read `docs/pi-compatibility.md` and follow its procedure. Search all call sites affected by changed defaults, CLI flags and lifecycle APIs. In particular, audit `--tools`, `--no-tools`, MCP activation, user extension hooks, cancellation, shutdown, settings locks, compaction and accounting. Verify isolation with runtime evidence, not only export existence.
 
-When an override is affected or when the user requests inspection:
-1. Run `node reconcile.mjs diff <skill>` to examine the local enhancement delta against the base.
-2. Formulate the upgrade strategy and present it using the `questionnaire` tool:
-   - **Option A (Recommended)**: 3-Way intelligent merge — Incorporate upstream improvements and automatically retain all local enhancements (`questionnaire` dispatch, `e` key amend).
-   - **Option B**: Upstream-only upgrade — Upgrade all non-overridden skills to the new commit, but keep local overrides pinned at the current base ref.
-   - **Option C**: Review granular diff before deciding.
+For new or changed capabilities read [integration acceptance](references/integration.md). Evaluate overlap, authority, storage, network egress, license and executable permissions. `codemode` controls exposure, not OS sandboxing or guardrails for an external process.
 
-### Step 4: Execution & Verification
+**Done:** a concise impact table names each change, affected consumer, adoption/defer decision, required adaptation and test. Features without a verified need remain explicitly deferred; tool names and performance numbers come from evidence.
 
-1. When an upgrade is approved:
-   - **Perform actual 3-way merge**: Retrieve the actual new upstream file at `remoteHead` (e.g., from upstream git cache or fetch). The three inputs to `git merge-file` must be the local enhanced file (`<localPath>`), the base upstream file at `baseRef` (`<basePath>`), and the target new upstream file (`<upstreamLatestPath>`):
-     ```bash
-     git merge-file -p -L local-enhancement -L upstream-base -L upstream-latest <localPath> <basePath> <upstreamLatestPath>
-     ```
-     Do NOT use a selfmerge (merging base against itself or local against itself) as upgrade verification; a selfmerge cannot test for real conflicts between new upstream changes and local enhancements.
-   - Verify the merge exits with 0 conflicts and inspect the output to ensure local enhancements are fully preserved alongside upstream improvements.
-   - Write the cleanly merged content to `<localPath>`.
-   - **Maintain correct ref fields**: Update `manifest.json` at `skills[].ref` for the source and `components.json` at `upstreams[source].pinnedRef`. Advance a reconciled override's `baseRef` only after merging and verifying all its changed companion files as well as `SKILL.md`. If Option B was chosen, leave the override's `baseRef` unchanged. Never add a `pinnedRef` field to the manifest.
-   - **Upstream deletes or moves a skill**: a moved skill keeps its content under a new path, so repoint `upstreamRelPath` at the head path before merging. A deleted skill leaves nothing to merge: either drop it from `manifest.json` `requiredSkills`, its cross-references and the inventory doc, or keep the capability by copying the last upstream file into `skills/<name>/SKILL.md` and registering it as an `override` whose `baseRef` stays at the last commit that carried the file, with a `description` saying upstream retired it. A merge that conflicts only on Pi command spelling or execution semantics is expected; resolve it toward the local adaptation and confirm every upstream change survives in adapted form.
-   - Run `node setup.mjs --skip-package-install` to sync to `~/.pi/agent`.
-   - Run `node doctor.mjs`, the repository tests, and the skill compatibility audit. Report the actual statuses; a clean merge alone does not validate runtime behavior.
-2. Commit the reviewed files only when local commits are covered by the user's authorization; preserve unrelated edits. Use a descriptive message (e.g. `chore(upstream): reconcile skills preserving Pi adaptations`).
-3. Report final confirmation and suggest `/reload`.
+## 4. Decide and Integrate
+
+Present material tradeoffs through `questionnaire` when unsettled. For affected skill sources offer actual three-way reconciliation, non-overridden-only update with unchanged override bases, or granular review. Approved implementation proceeds without reopening decisions.
+
+Implement repository declarations, ownership/sync, policy, workflow guidance, tests, diagnostics and removal/recovery together. Fixed package versions and complete Git refs are required. A live-only config edit is an experiment, not a completed harness integration. Preserve unmanaged server entries and secrets; claim legacy entries only through the explicit reviewed adoption path.
+
+Advance a reviewed Pi baseline only after candidate evidence, and skill bases only after actual reconciliation of all affected companions. Keep approved-but-unverified targets visibly incomplete. Prepare the concrete diff before requesting any missing installation/sync approval.
+
+**Done:** clean-environment setup can reproduce the intended configuration; personal edits are protected; security and lifecycle boundaries have executable regressions.
+
+## 5. Verify Before and After Sync
+
+Run focused regressions first, then the repo suite, API/SoL contracts and skill audit. Exercise real user paths in isolated fixtures: capability discovery, useful output, hidden tools, errors and bounded shutdown. The managed MCP workload probe is `node scripts/check-managed-mcp.mjs --smoke`; it may install the pinned packages and must be covered by installation authorization. Use the native runtime for integration evidence, not just raw protocol handshake.
+
+Check `node setup.mjs --help`; preview the authorized migration with `--dry-run`. Only after review and appropriate permission, sync managed resources. Run doctor and runtime probes again after sync. Reload resources for a resource-only change; quit/restart for a changed host runtime. `/reload` cannot replace the running host runtime. Verify idempotence and private-config preservation without printing secrets.
+
+**Done:** actual command exits and path results are recorded. Failed checks are fixed or leave the maintenance explicitly incomplete; old passing tests do not certify a new integration.
+
+## 6. Deliver Evidence
+
+Create/update a repository assessment with versions, source links, adoption decisions, task-owned changes, verification commands/results, limitations and restart instructions. Report **Verified**, **Not run**, **Blocked**, **Not applicable**. Separate connection, discovery, functional smoke, native integration and end-to-end evidence. Token savings, coverage and security claims require a defined measured scope.
+
+Finish with the remaining risks and concrete recovery path. Commit only with commit authorization and only reviewed task-owned files. Preserve pre-existing work.
+
+**Done:** another maintainer can reproduce the result and tell what was actually tested. Any unmet integration acceptance condition is labelled partial/blocked, never fully integrated.

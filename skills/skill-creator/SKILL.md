@@ -226,9 +226,10 @@ The description in `SKILL.md` frontmatter determines whether Pi triggers the ski
 - When a user query matches a skill's intent, the agent invokes the `read` tool on the skill's `SKILL.md` path.
 - Evaluation runs:
   ```bash
-  pi --mode json -p --no-session --tools read --no-skills --skill <temp-candidate-dir> -- "<query>"
+  pi --mode json -p --no-session --tools read --no-mcp --no-extensions --no-context-files --no-skills --skill <temp-candidate-dir> -- "<query>"
   ```
-  - `--tools read`: Restricts tool access to `read` only (no mutating tools like `bash`, `edit`, `write`).
+  - `--tools read`: Selects the native file reader; this flag alone does not exclude MCP tools in Pi 1.0.4.
+  - `--no-mcp --no-extensions --no-context-files`: Disables MCP connections, user extension tools/hooks and ambient project instructions. This is tool isolation, not an OS filesystem sandbox.
   - `--no-skills`: Isolates the candidate skill, disabling discovery of other competing installed skills.
   - `--`: Argument separator ensuring queries starting with `-` are treated safely as positional arguments.
   - The evaluation harness parses the JSON event stream (`tool_execution_start`, `toolcall_end`, `message_end`) to verify exact read calls to the candidate `SKILL.md`.
@@ -263,7 +264,7 @@ python -m scripts.run_loop \
 
 The loop:
 - Evaluates candidate descriptions using isolated Pi JSON invocations.
-- Proposes improved descriptions using `pi -p --no-session --no-tools --no-skills --no-context-files` with prompt over stdin, ensuring embedded prompts cannot execute commands or read project context.
+- Proposes improved descriptions using `pi -p --no-session --no-tools --no-mcp --no-extensions --no-skills --no-context-files` with prompt over stdin, disabling MCP and extension execution as well as native tools.
 - Propagates `--model` consistently to match the active session model.
 - Evaluates train/test holdouts to prevent overfitting and produces an HTML summary report.
 

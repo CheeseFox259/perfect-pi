@@ -28,6 +28,7 @@ function installFixture(t) {
   for (const file of ["setup.mjs", "doctor.mjs"]) copyFileSync(join(root, file), join(repo, file));
   mkdirSync(join(repo, "scripts"));
   copyFileSync(join(root, "scripts/pi-runtime.mjs"), join(repo, "scripts/pi-runtime.mjs"));
+  for (const file of ["managed-mcp.mjs", "mcp-config.mjs", "mcp-secrets.mjs"]) copyFileSync(join(root, "scripts", file), join(repo, "scripts", file));
   mkdirSync(join(repo, "global/extensions"), { recursive: true });
   copyFileSync(join(root, "global/extensions/compaction-settings.mjs"), join(repo, "global/extensions/compaction-settings.mjs"));
   const manifest = {
@@ -84,6 +85,46 @@ for (const name of names) {
     : [];
   return { home, repo, agentDir, shared, manifest, put, json, run, runFile, statePath, state, doctor, calls };
 }
+
+test("setup --help and unsupported flags are side-effect free", t => {
+  const f = installFixture(t);
+  assert.equal(f.runFile("setup.mjs", ["--help"]).status, 0);
+  assert.equal(existsSync(f.statePath), false);
+  assert.notEqual(f.runFile("setup.mjs", ["--typo"]).status, 0);
+  assert.equal(existsSync(f.statePath), false);
+  assert.deepEqual(f.calls(), []);
+});
+
+test("setup manages pinned MCP entries, preserves personal servers and detects drift", t => {
+  const f = installFixture(t);
+  f.manifest.mcpServers = { fixture: { package: "fixture-mcp@1.2.3", dataEnv: "FIXTURE_DIR", tools: ["search"], description: "Fixture" } };
+  f.json(join(f.repo, "manifest.json"), f.manifest);
+  f.json(join(f.agentDir, "mcp.json"), { autoEnableCodemode: false, mcpServers: { personal: { command: "personal", env: { API_KEY: "synthetic" } } } });
+  for (let i = 0; i < 2; i++) assert.equal(f.run("--skip-skill-install").status, 0);
+  const mcpPath = join(f.agentDir, "mcp.json");
+  const config = JSON.parse(readFileSync(mcpPath));
+  assert.deepEqual(config.mcpServers.personal, { command: "personal", env: { API_KEY: "synthetic" } });
+  assert.equal(config.autoEnableCodemode, false);
+  assert.equal(config.mcpServers.fixture.args.at(-1), "fixture-mcp@1.2.3");
+  assert.equal(f.doctor().statuses["managed MCP"].status, "SYNCED");
+  config.mcpServers.fixture.toolExposure.search = "direct";
+  f.json(mcpPath, config);
+  assert.equal(f.doctor().statuses["managed MCP"].status, "DRIFTED");
+  const before = readFileSync(f.statePath, "utf8");
+  assert.notEqual(f.run("--skip-skill-install").status, 0);
+  assert.equal(readFileSync(f.statePath, "utf8"), before);
+});
+
+test("setup dry-run prints only managed settings, never personal config values", t => {
+  const f = installFixture(t);
+  f.json(join(f.agentDir, "settings.json"), { privateUserSetting: "synthetic-never-print" });
+  const before = readFileSync(join(f.agentDir, "settings.json"), "utf8");
+  const result = f.run("--dry-run", "--skip-skill-install");
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(!result.stdout.includes("synthetic-never-print"));
+  assert.equal(readFileSync(join(f.agentDir, "settings.json"), "utf8"), before);
+  assert.equal(existsSync(f.statePath), false);
+});
 
 test("setup initializes user compaction defaults without overwriting later choices", (t) => {
   const f = installFixture(t);

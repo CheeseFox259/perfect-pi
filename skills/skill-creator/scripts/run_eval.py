@@ -7,7 +7,8 @@ for a set of queries. Outputs results as JSON.
 Evaluation runs Pi in JSON mode with:
 - Non-interactive ephemeral mode (-p --no-session)
 - Isolated skills (--no-skills --skill <path>)
-- Read-only tools allowlist (--tools read)
+- Read-only tools allowlist (--tools read), MCP/extension isolation (--no-mcp --no-extensions)
+- No ambient project instructions (--no-context-files)
 - Safe argument separator (--) before arbitrary query strings
 """
 
@@ -74,7 +75,8 @@ def run_single_query(
     """Run a single query and return trigger status and any error encountered.
 
     Creates an ephemeral skill with --skill so it appears in Pi's
-    available skills, then runs `pi --mode json -p --no-session --tools read --no-skills --skill <dir> -- <query>`
+    available skills, then runs Pi with `--tools read --no-mcp --no-extensions`
+    and `--no-context-files --no-skills --skill <dir> -- <query>`
     with closed stdin.
 
     Detects triggering from Pi's JSON event stream when the agent calls `read`
@@ -109,6 +111,9 @@ def run_single_query(
             "-p",
             "--no-session",
             "--tools", "read",
+            "--no-mcp",
+            "--no-extensions",
+            "--no-context-files",
             "--no-skills",
             "--skill", str(skill_dir),
         ]

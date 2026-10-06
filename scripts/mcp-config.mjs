@@ -12,7 +12,8 @@ export function minimaxConfig(agentDir, host = MINIMAX_HOSTS[0]) {
     description: "MiniMax Coding Plan: web search and image understanding. External requests require task authorization." };
 }
 export function updateMcpFile(path, change) {
-  if (existsSync(path) && (lstatSync(path).isSymbolicLink() || !lstatSync(path).isFile())) throw new Error("Unsafe MCP configuration path");
+  const file = lstatSync(path, { throwIfNoEntry: false });
+  if (file && (file.isSymbolicLink() || !file.isFile())) throw new Error("Unsafe MCP configuration path");
   mkdirSync(dirname(path), { recursive: true });
   const lock = `${path}.perfect-pi-lock`;
   let acquired = false;

@@ -476,6 +476,9 @@ run_single_query(
   assert.equal(args[toolsIdx + 1], "read", "Must restrict tools to read only (no mutating tools)");
 
   // Verify isolation
+  assert.ok(args.includes("--no-mcp"), "Pi 1.0.4 tool selection alone must not connect MCP servers");
+  assert.ok(args.includes("--no-extensions"), "User extension tools/hooks must not re-enable execution");
+  assert.ok(args.includes("--no-context-files"), "Ambient project instructions must not influence the probe");
   assert.ok(args.includes("--no-skills"), "Must pass --no-skills to isolate competing installed skills");
 
   // Verify ephemeral non-interactive
@@ -524,6 +527,8 @@ print(new_desc)
   const args = invocation.args;
 
   assert.ok(args.includes("--no-tools"), "Must pass --no-tools to prevent command execution from embedded prompts");
+  assert.ok(args.includes("--no-mcp"), "Improvement prompts must not connect MCP servers");
+  assert.ok(args.includes("--no-extensions"), "Improvement prompts must not load user hooks/tools");
   assert.ok(args.includes("--no-skills"), "Must pass --no-skills");
   assert.ok(args.includes("--no-context-files"), "Must pass --no-context-files");
 

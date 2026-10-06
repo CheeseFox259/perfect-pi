@@ -4,7 +4,7 @@ Perfect Pi 是一套运行在 Pi 上的全栈工程工作流配置。它把需�
 
 本文按日常使用顺序编写。默认假设：
 
-- 已安装 Pi `1.0.2`（与 `manifest.json` 中的 `piVersion` 一致）。
+- 已安装 Pi，受审基线以 `manifest.json` 中的 `piVersion` 为准。
 - 当前仓库是 `/Users/superhacker/perfect-pi`，实际使用时替换为你的路径。
 - Node.js、Git 和 Pi 已在 `PATH` 中。
 
@@ -505,6 +505,8 @@ SoL-Pi 日志 reducer 采用会话级原子授权机制：
 
 ## 9. MCP 协议接入与 MiniMax 私有凭据管理
 
+Codebase Memory 和 Context Mode 已作为受管 MCP 写入 manifest 并固定版本。前者补充代码图、调用链与 coverage 查询；后者默认仅开放本地文档索引、检索和自身统计。任意执行、删除、自动升级及原生 context-mode 生命周期 hook 不默认启用。安装、显式迁移、权限与恢复流程见 [受管 MCP 指南](managed-mcp.md)。`doctor` 检查配置所有权，`node scripts/check-managed-mcp.mjs --smoke` 才会启动固定版本服务器并验证临时夹具功能；该命令可能下载依赖。
+
 ### MiniMax Coding Plan MCP
 
 通过官方 stdio 服务接入 MiniMax 网络搜索与图片理解能力：
@@ -671,7 +673,7 @@ node doctor.mjs
 node doctor.mjs --json
 ```
 
-`doctor` 会把已安装的 Pi 运行时与 `manifest.json` 的 `piVersion` 比对，输出 `pi runtime` 一行。升级 Pi 后若该行报 `DRIFTED`，只需把 `piVersion` 更新到新版本；报 `MISSING` 则表示在已搜索的全局 `node_modules` 中找不到 Pi（可用 `PI_GLOBAL_NODE_MODULES` 指定额外路径）。
+`doctor` 会把已安装的 Pi 运行时与 `manifest.json` 的 `piVersion` 比对，输出 `pi runtime` 一行。升级 Pi 后若该行报 `DRIFTED`，先按 `docs/pi-compatibility.md` 审查候选版本、受影响调用点、契约及回归证据，取得所需授权后才推进基线并同步；不能只修改版本号消除告警。报 `MISSING` 表示在已搜索的全局 `node_modules` 中找不到 Pi（可用 `PI_GLOBAL_NODE_MODULES` 指定额外路径）。
 
 检查 skill 覆盖和 Pi 兼容性：
 

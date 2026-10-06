@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "piVersion": "1.0.2",
+  "piVersion": "1.0.4",
   "skillInstaller": "skills@1.7.0",
   "managedSettings": {
     "theme": "cc-dark",
@@ -40,6 +40,20 @@
     {"source": "npm:@aliou/pi-guardrails@0.19.0", "capabilities": ["deterministic-guardrails"]},
     {"source": "npm:pi-cc-extensions@0.9.5", "capabilities": ["compact-rendering", "context-inspector", "theme"]}
   ],
+  "mcpServers": {
+    "codebase-memory": {
+      "package": "codebase-memory-mcp@0.11.0",
+      "dataEnv": "CBM_CACHE_DIR",
+      "description": "Local code graph: index repositories, search symbols, trace calls, inspect architecture and index coverage. Verify graph findings against source; no ADR writes or project deletion.",
+      "tools": ["index_repository", "search_graph", "query_graph", "trace_path", "get_code_snippet", "get_file_outline", "get_graph_schema", "compare_graphs", "get_architecture", "search_code", "list_projects", "index_status", "check_index_coverage", "detect_changes"]
+    },
+    "context-mode": {
+      "package": "context-mode@1.0.169",
+      "dataEnv": "CONTEXT_MODE_DIR",
+      "description": "Local document FTS5 indexing and BM25 retrieval via ctx_index/ctx_search. Stats describe this server only; no arbitrary execution, web fetch, lifecycle hooks or automatic Pi session memory.",
+      "tools": ["ctx_index", "ctx_search", "ctx_stats"]
+    }
+  },
   "skillPolicy": {
     "excludeFromPi": [
       "archify",
@@ -49,7 +63,8 @@
       "mmx-cli",
       "ui-ux-pro-max",
       "codex-handoff",
-      "tabbit"
+      "tabbit",
+      "chief-of-staff"
     ],
     "shadowedOverrides": [
       "ask-matt", "claude-handoff", "code-review", "codebase-design",
@@ -62,8 +77,8 @@
     ]
   },
   "skills": [
-    {"source": "mattpocock/skills", "ref": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60", "selection": "all", "requiredSkills": ["ask-matt", "code-review", "codebase-design", "diagnosing-bugs", "domain-modeling", "grill-with-docs", "implement", "improve-codebase-architecture", "prototype", "research", "resolving-merge-conflicts", "setup-matt-pocock-skills", "tdd", "to-spec", "to-tickets", "triage", "wayfinder", "wizard", "grill-me", "grilling", "handoff", "teach", "to-questionnaire", "wait-what", "writing-for-agents", "claude-handoff", "implement-spec", "loop-me", "pr", "retro", "setup-ts-deep-modules", "writing-beats", "writing-fragments", "writing-shape", "git-guardrails-claude-code", "migrate-to-shoehorn", "scaffold-exercises", "setup-pre-commit"], "scope": "global"},
-    {"source": "anthropics/skills", "ref": "8a1541c4a3ffa5a20a5a91de0dcf3f0bab1d1ef4", "selection": ["frontend-design", "skill-creator"], "scope": "global", "status": "skill-creator uses the local Pi evaluation override"},
+    {"source": "mattpocock/skills", "ref": "4588b32ecab9ecc9fc8cc6b6c5e7d675b6004b0d", "selection": "all", "requiredSkills": ["ask-matt", "code-review", "codebase-design", "diagnosing-bugs", "domain-modeling", "grill-with-docs", "implement", "improve-codebase-architecture", "prototype", "research", "resolving-merge-conflicts", "setup-matt-pocock-skills", "tdd", "to-spec", "to-tickets", "triage", "wayfinder", "wizard", "grill-me", "grilling", "handoff", "teach", "to-questionnaire", "wait-what", "writing-for-agents", "claude-handoff", "implement-spec", "loop-me", "pr", "retro", "setup-ts-deep-modules", "writing-beats", "writing-fragments", "writing-shape", "git-guardrails-claude-code", "migrate-to-shoehorn", "scaffold-exercises", "setup-pre-commit"], "scope": "global"},
+    {"source": "anthropics/skills", "ref": "683bc88e56f3e09ba94f7055977f3d3aa499f202", "selection": ["frontend-design", "skill-creator"], "scope": "global", "status": "skill-creator uses the local Pi evaluation override"},
     {"source": "vercel-labs/agent-skills", "ref": "063bee94c3f4df8453406c830b0a7df0f2860278", "selection": ["vercel-react-best-practices", "web-design-guidelines"], "scope": "global"},
     {"source": "local:route", "scope": "local"},
     {"source": "local:verify-product", "scope": "local"},

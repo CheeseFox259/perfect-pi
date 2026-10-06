@@ -1,12 +1,12 @@
 # Perfect Pi
 
-A versioned Pi environment for full-stack engineering with Matt Pocock Skills as the methodology layer. The managed runtime target is Pi 1.0.2.
+A versioned Pi environment for full-stack engineering with Matt Pocock Skills as the methodology layer. The reviewed runtime baseline is recorded in `manifest.json:piVersion`.
 
 - [中文使用指南](docs/USAGE.zh-CN.md)
 
 ## Source of truth
 
-`manifest.json` owns managed runtime settings, package versions, Skill source commits and Skill visibility policy. `global/` and `skills/` own local Pi resources. `setup.mjs` installs missing Skills from the pinned upstream commits in the manifest; existing Skills remain untouched when their source pin is unchanged. It preserves user-specific provider/model settings and unrelated packages. A small ownership registry in `~/.pi/agent/.perfect-pi-state.json` lets sync remove only files it previously installed. If a destination file was independently changed before ownership was recorded, setup refuses to overwrite it.
+`manifest.json` owns managed runtime settings, package versions, pinned MCP declarations, Skill source commits and Skill visibility policy. `global/` and `skills/` own local Pi resources. `setup.mjs` installs missing Skills from the pinned upstream commits in the manifest; existing Skills remain untouched when their source pin is unchanged. It preserves user-specific provider/model settings and unrelated packages. A small ownership registry in `~/.pi/agent/.perfect-pi-state.json` lets sync remove only files it previously installed. If a destination file was independently changed before ownership was recorded, setup refuses to overwrite it.
 
 ```bash
 node setup.mjs --dry-run
@@ -24,7 +24,13 @@ For an intentional migration of existing physical upstream skill files, use `--a
 - Pi-adapted workflows own grilling, implementation, tickets, code review, handoff, triage, and wayfinding. Interactive decisions use `question`/`questionnaire`; session answers and authorization carry forward.
 - `/verify`, `/ui-check`, and `/release-check` are short repeatable evidence workflows.
 - Use `/skill:code-review` for working-tree changes (including untracked files), committed diffs, or current-tree snapshot audits. Ordinary reviews need no tracker. `/skill:implement` uses working-tree review before committing. `/skill:handoff` records a continuation pointer.
-- `/skill:maintain` audits upstream repository updates, diffs overrides, and executes 3-way merges.
+- `/skill:maintain` audits runtime/package/skill/MCP updates, reconciles overrides and requires complete integration plus bounded evidence before reporting success.
+
+## Managed MCPs
+
+Codebase Memory adds structural code-graph discovery; Context Mode adds local document FTS5 retrieval. Setup synchronizes their pinned declarations and exact tool allowlists without replacing personal servers. Execution, deletion, auto-upgrade and native context-mode hooks are excluded from the default integration. Read [the MCP workflow and ownership guide](docs/managed-mcp.md) for authorized indexing, narrow legacy adoption, storage, recovery and smoke verification.
+
+Doctor checks configuration/ownership, not MCP runtime health. `node scripts/check-managed-mcp.mjs --smoke` exercises native Pi transport and temporary-fixture functional workloads; it may download pinned dependencies. npx pins top-level package versions, not transitive dependencies through a repo lockfile. Reload resources after authorized sync; restart Pi when the host runtime changes.
 
 ## Implementation ladder
 

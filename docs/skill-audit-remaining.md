@@ -8,7 +8,7 @@ Run `node skill-audit.mjs` to check that every managed skill is present, registe
 
 | Skill | Pi adaptation |
 | --- | --- |
-| ask-matt | `/skill:name` command spelling and Pi execution semantics |
+| ask-matt | `/skill:name` command spelling and Pi execution semantics; after a bug fix, run retro before deciding whether architecture work is needed |
 | claude-handoff | Compatibility alias for Pi handoff and blocking continuation; no detached coding CLI |
 | code-review | Working-tree, committed and snapshot modes; includes untracked files; ordinary review needs no tracker |
 | codebase-design | Design alternatives use a blocking `subagent.tasks` batch and interactive decisions |
@@ -63,6 +63,16 @@ The shared Pi instructions govern interactive questions, optional tool activatio
 ## Native skills
 
 `route`, `project-architecture`, `verify-product`, and `maintain` are native Perfect Pi workflows. Route remains recommendation-only. Maintain uses manifest `skills[].ref`, component source `pinnedRef`, and per-override `baseRef`; its merge check compares actual Git versions.
+
+## Reviewed source update
+
+Matt's source pin advances from `d81f3a1` to the reviewed `4588b32`. Only `ask-matt/SKILL.md` changed among existing upstream skill files; its post-fix route now starts with retro. A real local/base/target merge produced one command-spelling conflict, resolved to retain Pi's `/skill:` commands and the new upstream route. No ask-matt companion file changed. Only ask-matt's override `baseRef` advances; unchanged overrides keep their prior lineage, including the retired merge-conflict skill.
+
+The new experimental `chief-of-staff` skill coordinates long-running goals through subagents. It is not part of the required managed inventory and is excluded from Pi loading. Matt's `selection: all` can download it; `excludeFromPi` controls visibility, not installation. No scheduling or automatic delegation is enabled by this update.
+
+Anthropic's source pin advances from `8a1541c` to `683bc88`. The selected `frontend-design` and `skill-creator` directories are unchanged, including companion files; the local skill-creator override retains its original `baseRef`.
+
+After the approved live sync, all 207 regression tests passed and doctor reported SYNCED. Pi's actual resource loader found 47 skills without diagnostics, loaded the managed ask-matt, and did not expose chief-of-staff even though the all-skills installer downloaded it. All four source heads matched their pins at verification time.
 
 ## Verification boundaries
 

@@ -29,7 +29,7 @@ Reconnect through native `/mcp` after a key update; `/reload` applies a newly co
 
 Both stores use atomic replacement and bounded directory locks. A crash can leave a stale lock; do not remove it while a writer is active. Inspect the `.perfect-pi-lock` or `mcp-private/.write-lock` only when the corresponding writer is stopped. Native MCP's own configuration editor does not share this custom lock, so avoid concurrent profile/key edits from multiple Pi processes.
 
-Setup manages only helper code and extensions. It does **not** copy, manage, overwrite or remove `mcp-private/` or user `mcp.json`. Importing an existing Claude MiniMax key requires explicit user permission; `scripts/import-minimax-from-claude.mjs` only imports that server, refuses an existing Pi MiniMax entry, and leaves Claude's file untouched.
+Setup manages helper code, extensions and the declared public code/document MCP entries only. It does **not** manage `mcp-private/` or personal MCP entries; the native `mcp.json` remains a mixed-ownership file. See [managed MCP ownership and workflows](managed-mcp.md). Importing an existing Claude MiniMax key requires explicit user permission; `scripts/import-minimax-from-claude.mjs` only imports that server, refuses an existing Pi MiniMax entry, and leaves Claude's file untouched.
 
 ### Project Profile
 
