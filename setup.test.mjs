@@ -111,6 +111,46 @@ test("setup defaults web access to eager without touching user settings or crede
   assert.match(f.doctor().statuses["web tools"].detail, /user preference/);
 });
 
+test("setup initializes optional MCP defaults without changing other servers or explicit choices", t => {
+  const f = installFixture(t);
+  f.manifest.mcpDefaults = { "ask-user-questions": { enabled: false }, MiniMax: { enabled: false } };
+  f.json(join(f.repo, "manifest.json"), f.manifest);
+  const path = join(f.agentDir, "mcp.json");
+  const initial = { autoEnableCodemode: false, mcpServers: {
+    "ask-user-questions": { command: "ask" },
+    MiniMax: { command: "private", env: { API_KEY: "synthetic-never-print" } },
+    "codebase-memory": { command: "graph", toolExposure: { "*": "hidden" } },
+    "context-mode": { command: "docs" }, personal: { command: "personal", enabled: false },
+  } };
+  f.json(path, initial);
+  const before = readFileSync(path, "utf8");
+  const dry = f.run("--dry-run", "--skip-skill-install");
+  assert.equal(dry.status, 0, dry.stderr);
+  assert.equal(readFileSync(path, "utf8"), before);
+  assert.ok(!dry.stdout.includes("synthetic-never-print"));
+  assert.equal(f.doctor().statuses["MCP defaults"].status, "MISSING");
+  const sync = f.run("--skip-skill-install");
+  assert.equal(sync.status, 0, sync.stderr);
+  const next = JSON.parse(readFileSync(path));
+  assert.deepEqual(next, { ...initial, mcpServers: { ...initial.mcpServers,
+    "ask-user-questions": { ...initial.mcpServers["ask-user-questions"], enabled: false },
+    MiniMax: { ...initial.mcpServers.MiniMax, enabled: false },
+  } });
+  assert.equal(f.doctor().statuses["MCP defaults"].status, "SYNCED");
+  const initialized = readFileSync(path, "utf8");
+  assert.equal(f.run("--skip-skill-install").status, 0);
+  assert.equal(readFileSync(path, "utf8"), initialized);
+  next.mcpServers.MiniMax.enabled = true;
+  f.json(path, next);
+  assert.equal(f.run("--skip-skill-install").status, 0);
+  assert.equal(JSON.parse(readFileSync(path)).mcpServers.MiniMax.enabled, true);
+  delete next.mcpServers.MiniMax;
+  delete next.mcpServers["ask-user-questions"];
+  f.json(path, next);
+  assert.equal(f.run("--skip-skill-install").status, 0);
+  assert.deepEqual(JSON.parse(readFileSync(path)), next);
+});
+
 test("invalid web config fails preflight without leaking contents or writing resources", t => {
   const f = installFixture(t);
   f.manifest.packages = ["npm:pi-web-access@0.33.0"];

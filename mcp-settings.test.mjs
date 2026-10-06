@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, mkdirSync } f
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { storeMcpSecret, readMcpSecret } from "./scripts/mcp-secrets.mjs";
-import { configureMiniMax, projectMcpOverride, configureServerKey } from "./scripts/mcp-config.mjs";
+import { configureMiniMax, projectMcpOverride, configureServerKey, applyMcpDefaults, inspectMcpDefaults } from "./scripts/mcp-config.mjs";
 import { spawnSync } from "node:child_process";
 import { detectPiRuntime } from "./scripts/pi-runtime.mjs";
 import { pathToFileURL } from "node:url";
@@ -18,10 +18,31 @@ test("private key storage is locked, mode 0600, and absent from native MCP confi
   assert.ok(!readFileSync(join(dir, "mcp.json"), "utf8").includes("synthetic-test-key"));
   configureServerKey(dir, "MiniMax", "MINIMAX_API_KEY");
   const config = JSON.parse(readFileSync(join(dir, "mcp.json"), "utf8")).mcpServers.MiniMax;
+  assert.equal(config.enabled, false);
   assert.equal(config.args.filter(arg => arg.endsWith("mcp-launch.mjs")).length, 1);
   assert.throws(() => configureMiniMax(dir, "https://host-controlled-by-project.example"));
   assert.throws(() => storeMcpSecret(dir, "../escape", "KEY", "value"));
 });
+test("optional MCP defaults preserve explicit choices, other servers and secrets", t => {
+  const dir = mkdtempSync(join(tmpdir(), "pi-mcp-defaults-")); t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const defaults = { MiniMax: { enabled: false }, "ask-user-questions": { enabled: false } };
+  const current = { autoEnableCodemode: false, mcpServers: {
+    MiniMax: { command: "private", env: { API_KEY: "synthetic" } },
+    "ask-user-questions": { command: "ask", enabled: true },
+    "codebase-memory": { command: "graph" }, "context-mode": { command: "docs" },
+  } };
+  const before = structuredClone(current);
+  const next = applyMcpDefaults(current, defaults);
+  assert.deepEqual(current, before);
+  assert.deepEqual(next, { ...current, mcpServers: { ...current.mcpServers, MiniMax: { ...current.mcpServers.MiniMax, enabled: false } } });
+  assert.deepEqual(applyMcpDefaults(next, defaults), next);
+  assert.deepEqual(applyMcpDefaults({}, defaults), { mcpServers: {} });
+  assert.throws(() => applyMcpDefaults(current, { MiniMax: { enabled: "false" } }), /Invalid/);
+  assert.throws(() => applyMcpDefaults(current, { MiniMax: { enabled: false, exposure: "hidden" } }), /Invalid/);
+  assert.throws(() => applyMcpDefaults([], defaults), /Invalid/);
+  assert.equal(inspectMcpDefaults(dir, defaults).status, "SYNCED");
+});
+
 test("secret storage refuses symlinks and lock contention", t => {
   const dir = mkdtempSync(join(tmpdir(), "pi-mcp-lock-test-")); t.after(() => rmSync(dir, { recursive: true, force: true }));
   mkdirSync(join(dir, "outside")); symlinkSync(join(dir, "outside"), join(dir, "mcp-private"));
@@ -81,7 +102,7 @@ test("native MCP config honors trusted project profiles without project keys", a
   const dir = mkdtempSync(join(tmpdir(), "pi-mcp-project-test-")); t.after(() => rmSync(dir, { recursive: true, force: true }));
   const agent = join(dir, "agent"), cwd = join(dir, "project");
   configureMiniMax(agent, "https://api.minimaxi.com");
-  projectMcpOverride(cwd, "MiniMax", { enabled: false, exposure: "hidden" });
+  projectMcpOverride(cwd, "MiniMax", { enabled: true, exposure: "hidden" });
   const runtime = await detectPiRuntime();
   const { loadExtensions } = await import(pathToFileURL(join(runtime.root, "dist/core/extensions/loader.js")));
   const loaded = await loadExtensions([join(import.meta.dirname, "global/extensions/mcp-settings.ts")], import.meta.dirname);
@@ -95,9 +116,9 @@ test("native MCP config honors trusted project profiles without project keys", a
   assert.match(notifications[0], /not saved/);
   const { loadMcpConfig } = await import(pathToFileURL(join(runtime.root, "dist/extensions/mcp/config.js")));
   const trusted = loadMcpConfig({ agentDir: agent, cwd, projectTrusted: true });
-  assert.deepEqual(trusted.errors, []); assert.equal(trusted.servers[0].config.enabled, false); assert.equal(trusted.servers[0].config.exposure, "hidden");
+  assert.deepEqual(trusted.errors, []); assert.equal(trusted.servers[0].config.enabled, true); assert.equal(trusted.servers[0].config.exposure, "hidden");
   const untrusted = loadMcpConfig({ agentDir: agent, cwd, projectTrusted: false });
-  assert.notEqual(untrusted.servers[0].config.enabled, false);
+  assert.equal(untrusted.servers[0].config.enabled, false);
   const project = JSON.parse(readFileSync(join(cwd, ".pi/mcp.json"), "utf8"));
   assert.deepEqual(Object.keys(project.mcpServers.MiniMax).sort(), ["enabled", "exposure"]);
 });

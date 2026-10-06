@@ -532,7 +532,8 @@ Codebase Memory 和 Context Mode 已作为受管 MCP 写入 manifest 并固定�
    ```text
    /mcp-setup
    ```
-   选择服务区域后，在遮蔽弹窗中输入 Key。
+   选择服务区域后，在遮蔽弹窗中输入 Key。MiniMax 新配置默认禁用，运行 `/reload` 后可在 `/mcp` 中按需启用；更新 Key 不改变启用状态。
+   `ask-user-questions` 同样默认禁用，保留配置供异步问答按需使用。Setup 只初始化未明确设置的启用状态，不覆盖用户之后的显式选择；Codebase Memory 和 Context Mode 保持不变。
 2. **Key 更新与管理**：
    ```text
    /mcp-key MiniMax

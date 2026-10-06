@@ -2,6 +2,14 @@
 
 Perfect Pi declares reviewed MCP packages and exact tool allowlists in `manifest.json:mcpServers`. `components.json:mcpServers` records their upstream sources and selected integration mode. Setup installs the managed launcher code and synchronizes only these server entries in `<agent-dir>/mcp.json`; personal servers, top-level settings and private credentials remain user-owned.
 
+## Optional Server Defaults
+
+`manifest.json:mcpDefaults` initializes `ask-user-questions` and `MiniMax` with `enabled: false` when they are already configured and have no explicit enabled preference. Setup does not install, claim ownership of, or delete these personal servers; existing commands, tool exposure, environment settings and private keys are preserved. Explicit later `enabled: true` or `false` choices survive setup. MiniMax onboarding also creates a disabled entry.
+
+Native `question`/`questionnaire` remain the default interactive path; native web tools remain the default search path. The optional servers are retained for asynchronous questions or MiniMax search/image understanding when deliberately enabled. Codebase Memory and Context Mode remain unchanged.
+
+Run `/reload` after syncing configuration so the current session applies the disabled state. Enable an optional server through `/mcp` when needed, or use `/mcp-project MiniMax on codemode` (similarly for `ask-user-questions`) for a trusted project's override. Doctor checks default initialization, not whether a user's explicit choice matches the default.
+
 ## Setup and Ownership
 
 ```bash

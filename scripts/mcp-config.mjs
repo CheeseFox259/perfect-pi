@@ -8,7 +8,7 @@ export function minimaxConfig(agentDir, host = MINIMAX_HOSTS[0]) {
   if (!MINIMAX_HOSTS.includes(host)) throw new Error("Unsupported MiniMax API host");
   return { command: process.execPath,
     args: [join(agentDir, "scripts/mcp-launch.mjs"), agentDir, "MiniMax", "MINIMAX_API_KEY", "uvx", "minimax-coding-plan-mcp", "-y"],
-    env: { MINIMAX_API_HOST: host }, exposure: "codemode",
+    env: { MINIMAX_API_HOST: host }, enabled: false, exposure: "codemode",
     description: "MiniMax Coding Plan: web search and image understanding. External requests require task authorization." };
 }
 export function updateMcpFile(path, change) {
@@ -29,6 +29,38 @@ export function updateMcpFile(path, change) {
     const next = change(parsed);
     writeFileSync(temporary, `${JSON.stringify(next, null, 2)}\n`, { mode: 0o600, flag: "wx" }); renameSync(temporary, path);
   } finally { rmSync(temporary, { force: true }); rmSync(lock, { recursive: true, force: true }); }
+}
+// Initialize preferences only for configured servers; never install personal servers.
+export function applyMcpDefaults(current, defaults = {}) {
+  if (!current || typeof current !== "object" || Array.isArray(current) || (current.mcpServers && (typeof current.mcpServers !== "object" || Array.isArray(current.mcpServers)))) {
+    throw new Error("Invalid MCP configuration; contents withheld");
+  }
+  const servers = { ...current.mcpServers };
+  for (const [name, preference] of Object.entries(defaults)) {
+    validateSecretTarget(name, "API_KEY");
+    if (!preference || Object.keys(preference).some(key => key !== "enabled") || typeof preference.enabled !== "boolean") {
+      throw new Error(`Invalid MCP enabled default: ${name}`);
+    }
+    const server = servers[name];
+    if (!server) continue;
+    if (server.enabled !== undefined && typeof server.enabled !== "boolean") throw new Error(`Invalid MCP enabled preference: ${name}`);
+    if (server.enabled === undefined) servers[name] = { ...server, enabled: preference.enabled };
+  }
+  return { ...current, mcpServers: servers };
+}
+export function inspectMcpDefaults(agentDir, defaults = {}) {
+  try {
+    const path = join(agentDir, "mcp.json");
+    const file = lstatSync(path, { throwIfNoEntry: false });
+    if (file && (file.isSymbolicLink() || !file.isFile())) throw new Error("Unsafe MCP configuration path");
+    const current = file ? JSON.parse(readFileSync(path, "utf8")) : {};
+    const initialized = applyMcpDefaults(current, defaults);
+    const missing = Object.keys(defaults).filter(name => current.mcpServers?.[name] && current.mcpServers[name].enabled === undefined);
+    const configured = Object.keys(defaults).filter(name => initialized.mcpServers[name]);
+    return { status: missing.length ? "MISSING" : "SYNCED", detail: `${configured.length} optional servers configured; explicit user choices preserved${missing.length ? `; defaults not initialized: ${missing.join(", ")}` : ""}` };
+  } catch {
+    return { status: "DRIFTED", detail: "Invalid or unsafe MCP preferences; contents withheld" };
+  }
 }
 export function configureMiniMax(agentDir, host) {
   mkdirSync(agentDir, { recursive: true });

@@ -1,7 +1,7 @@
 import { lstatSync, readFileSync, mkdirSync, chmodSync } from "node:fs";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import { updateMcpFile } from "./mcp-config.mjs";
+import { applyMcpDefaults, updateMcpFile } from "./mcp-config.mjs";
 
 const exposures = ["codemode", "deferred", "direct", "hidden"];
 export function managedMcpConfigs(manifest, agentDir) {
@@ -69,7 +69,7 @@ export function planManagedMcp(manifest, agentDir, previous = {}, { adopt = fals
     if (!matches(servers[name], old)) throw new Error(`Refusing to remove edited MCP server: ${name}`);
     delete servers[name];
   }
-  return { next: { ...current, mcpServers: servers }, owned: desired, adopted };
+  return { next: applyMcpDefaults({ ...current, mcpServers: servers }, manifest.mcpDefaults), owned: desired, adopted };
 }
 export function syncManagedMcp(manifest, agentDir, previous, options = {}) {
   let plan;

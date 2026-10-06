@@ -40,6 +40,10 @@
     {"source": "npm:@aliou/pi-guardrails@0.19.0", "capabilities": ["deterministic-guardrails"]},
     {"source": "npm:pi-cc-extensions@0.9.5", "capabilities": ["compact-rendering", "context-inspector", "theme"]}
   ],
+  "mcpDefaults": {
+    "ask-user-questions": { "enabled": false },
+    "MiniMax": { "enabled": false }
+  },
   "mcpServers": {
     "codebase-memory": {
       "package": "codebase-memory-mcp@0.11.0",

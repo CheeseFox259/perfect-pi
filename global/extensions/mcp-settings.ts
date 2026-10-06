@@ -61,7 +61,7 @@ export default function mcpSettings(pi: ExtensionAPI) {
         if (!value) return;
         helper.storeMcpSecret(getAgentDir(), "MiniMax", "MINIMAX_API_KEY", value);
         helper.configureMiniMax(getAgentDir(), host);
-        ctx.ui.notify("MiniMax MCP configured privately. Run /reload to connect.", "info");
+        ctx.ui.notify("MiniMax MCP configured privately and disabled by default. Run /reload, then enable it in /mcp when needed.", "info");
       } catch { ctx.ui.notify("MiniMax configuration was not completed. No key is shown or logged.", "warning"); }
     },
   });

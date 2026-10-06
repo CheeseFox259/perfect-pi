@@ -8,6 +8,7 @@ import { homedir } from "node:os";
 import { piRuntimeRoots as runtimeRoots, detectPiRuntime as resolveRuntime } from "./scripts/pi-runtime.mjs";
 
 import { planManagedMcp, syncManagedMcp, inspectManagedMcp } from "./scripts/managed-mcp.mjs";
+import { inspectMcpDefaults } from "./scripts/mcp-config.mjs";
 import { ensureEagerWebTools, inspectWebToolActivation } from "./scripts/web-access-config.mjs";
 const usesWebAccess = manifest => packageSources(manifest).some(source => /^npm:pi-web-access@/.test(source));
 const root = dirname(fileURLToPath(import.meta.url));
@@ -408,7 +409,7 @@ async function sync({ dryRun = false, skipPackageInstall = false, skipSkillInsta
     Object.entries(installedSkillRefs).filter(([source]) => manifestSources.has(source))
   );
   if (!dryRun) {
-    if (Object.keys(manifest.mcpServers ?? {}).length || Object.keys(previousState.mcpServers ?? {}).length) {
+    if (Object.keys(manifest.mcpServers ?? {}).length || Object.keys(previousState.mcpServers ?? {}).length || Object.keys(manifest.mcpDefaults ?? {}).length) {
       syncManagedMcp(manifest, agentDir, previousState.mcpServers ?? {}, { adopt: adoptMcp });
     }
     if (usesWebAccess(manifest)) ensureEagerWebTools(agentDir);
@@ -423,6 +424,7 @@ async function sync({ dryRun = false, skipPackageInstall = false, skipSkillInsta
     }, null, 2)}\n`);
   } else {
     if (usesWebAccess(manifest)) console.log("WEB ACCESS default eager activation; explicit user preference preserved; no network requests");
+    console.log(`MCP DEFAULTS ${Object.entries(manifest.mcpDefaults ?? {}).map(([name, value]) => `${name}=${value.enabled ? "on" : "off"}`).join(", ") || "none"}; configured servers only; explicit user choices preserved`);
     console.log(`MCP CONFIG ${Object.keys(mcpPlan.owned).join(", ") || "none"}; no servers started; adopted: ${mcpPlan.adopted.join(", ") || "none"}`);
     console.log(`SETTINGS ${settings.settingsPath}; managed fields and package/skill policies only`);
     console.log(JSON.stringify({ ...manifest.managedSettings, packages: packageDeclarations(manifest), skills: settings.currentManagedPatterns }, null, 2));
@@ -482,6 +484,10 @@ export async function inspect() {
   if (Object.keys(manifest.mcpServers ?? {}).length || Object.keys(previousState.mcpServers ?? {}).length) {
     const mcp = inspectManagedMcp(manifest, agentDir, previousState.mcpServers ?? {});
     mark("managed MCP", mcp.status, mcp.detail);
+  }
+  if (Object.keys(manifest.mcpDefaults ?? {}).length) {
+    const defaults = inspectMcpDefaults(agentDir, manifest.mcpDefaults);
+    mark("MCP defaults", defaults.status, defaults.detail);
   }
   if (usesWebAccess(manifest)) {
     const web = inspectWebToolActivation(agentDir);
